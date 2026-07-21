@@ -1,0 +1,1848 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Turntime Analytics Dashboard</title>
+  <meta name="description" content="Dashboard rekap turntime Premium dan Laden/TPS dengan filter periodik, customer, movement, act, grafik kustom, serta penyimpanan Google Sheets." />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --navy: #0b1f3a;
+      --navy-2: #132f55;
+      --blue: #1677ff;
+      --cyan: #20b8cd;
+      --green: #13a36f;
+      --amber: #e69a16;
+      --red: #d84a4a;
+      --ink: #172033;
+      --muted: #667085;
+      --line: #dfe5ec;
+      --surface: #ffffff;
+      --surface-2: #f5f8fc;
+      --shadow: 0 12px 35px rgba(10, 31, 58, 0.08);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--surface-2);
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+
+    .app { min-height: 100vh; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 26px;
+      color: #fff;
+      background: linear-gradient(110deg, var(--navy), var(--navy-2));
+      box-shadow: 0 8px 24px rgba(6, 25, 49, 0.18);
+    }
+    .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: 13px;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      letter-spacing: -1px;
+      background: linear-gradient(135deg, var(--blue), var(--cyan));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
+    }
+    .brand h1 { font-size: 17px; margin: 0; }
+    .brand p { font-size: 12px; margin: 2px 0 0; color: #bcd0e8; }
+    .top-actions { display: flex; align-items: center; gap: 10px; }
+    .cloud-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 11px;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 999px;
+      font-size: 12px;
+      color: #d8e8fb;
+      background: rgba(255,255,255,.06);
+    }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #93a4b8; }
+    .dot.ok { background: #2bd899; box-shadow: 0 0 0 4px rgba(43,216,153,.12); }
+    .dot.warn { background: #ffc857; box-shadow: 0 0 0 4px rgba(255,200,87,.12); }
+    .icon-btn {
+      border: 1px solid rgba(255,255,255,.22);
+      color: #fff;
+      background: rgba(255,255,255,.08);
+      border-radius: 11px;
+      padding: 9px 12px;
+    }
+
+    .hero {
+      padding: 28px 26px 18px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 20px;
+      align-items: end;
+      background:
+        radial-gradient(circle at 80% 0%, rgba(32,184,205,.14), transparent 34%),
+        linear-gradient(180deg, #fff, #f5f8fc);
+    }
+    .hero h2 { margin: 0 0 8px; font-size: clamp(25px, 3vw, 38px); letter-spacing: -1.2px; }
+    .hero p { margin: 0; max-width: 820px; color: var(--muted); line-height: 1.6; }
+    .upload-box { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .btn {
+      border: 0;
+      border-radius: 12px;
+      padding: 11px 15px;
+      font-weight: 700;
+      transition: transform .15s ease, box-shadow .15s ease, opacity .15s ease;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { color: #fff; background: linear-gradient(135deg, var(--blue), #0f62d8); box-shadow: 0 9px 20px rgba(22,119,255,.22); }
+    .btn-secondary { color: var(--navy); background: #eaf2ff; }
+    .btn-ghost { color: var(--ink); background: #fff; border: 1px solid var(--line); }
+    .btn-danger { color: #b42318; background: #fff1f0; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; transform: none; box-shadow: none; }
+    #fileInput { display: none; }
+
+    main { padding: 0 26px 34px; }
+    .notice {
+      display: none;
+      margin-bottom: 16px;
+      padding: 13px 15px;
+      border-radius: 13px;
+      line-height: 1.45;
+      font-size: 13px;
+      border: 1px solid transparent;
+    }
+    .notice.show { display: block; }
+    .notice.info { background: #edf6ff; border-color: #cce6ff; color: #164e86; }
+    .notice.success { background: #ecfdf5; border-color: #b7eed6; color: #08734f; }
+    .notice.error { background: #fff1f0; border-color: #ffc9c4; color: #a8322b; }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid #e5eaf0;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .filter-panel { padding: 18px; margin-bottom: 18px; }
+    .section-head { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-bottom: 15px; }
+    .section-head h3 { margin: 0; font-size: 16px; }
+    .section-head p { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+    .filters {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(135px, 1fr));
+      gap: 12px;
+      align-items: end;
+    }
+    .field { min-width: 0; }
+    .field label { display: block; font-size: 11px; font-weight: 800; letter-spacing: .35px; text-transform: uppercase; color: #5d6a7c; margin-bottom: 6px; }
+    .control {
+      width: 100%;
+      min-height: 42px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: #fff;
+      color: var(--ink);
+      padding: 9px 11px;
+      outline: none;
+    }
+    .control:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(22,119,255,.10); }
+    .period-inputs { display: contents; }
+    .hidden { display: none !important; }
+    .check-multi { position: relative; }
+    .check-multi-trigger {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      text-align: left;
+      cursor: pointer;
+    }
+    .check-multi-trigger:hover { border-color: #b9c7d9; }
+    .check-multi-trigger.open {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(22,119,255,.10);
+    }
+    .check-multi-trigger-text {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .check-multi-arrow {
+      flex: 0 0 auto;
+      color: #667085;
+      transition: transform .16s ease;
+    }
+    .check-multi-trigger.open .check-multi-arrow { transform: rotate(180deg); }
+    .check-multi-panel {
+      display: none;
+      position: absolute;
+      top: calc(100% + 7px);
+      left: 0;
+      z-index: 45;
+      width: max(100%, 270px);
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      background: #fff;
+      box-shadow: 0 18px 45px rgba(10,31,58,.18);
+    }
+    .check-multi-panel.open { display: block; }
+    .check-multi-search {
+      min-height: 38px;
+      margin-bottom: 8px;
+      padding: 7px 9px;
+      font-size: 12px;
+    }
+    .check-multi-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 2px 2px 8px;
+      border-bottom: 1px solid #edf0f4;
+    }
+    .check-multi-options {
+      max-height: 255px;
+      overflow: auto;
+      padding-top: 6px;
+    }
+    .check-option {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 7px;
+      margin: 1px 0;
+      border-radius: 9px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--ink);
+    }
+    .check-option:hover { background: #f2f7ff; }
+    .check-option input {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: var(--blue);
+      cursor: pointer;
+    }
+    .check-option span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .check-option.overall-option {
+      margin-bottom: 5px;
+      padding-bottom: 9px;
+      border-bottom: 1px solid #edf0f4;
+      border-radius: 9px 9px 0 0;
+      font-weight: 750;
+    }
+    .link-btn {
+      border: 0;
+      padding: 3px 2px;
+      font-size: 12px;
+      font-weight: 750;
+      color: var(--blue);
+      background: transparent;
+      cursor: pointer;
+    }
+    .link-btn:hover { text-decoration: underline; }
+    .mini-help {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 5px;
+      line-height: 1.45;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(145px, 1fr));
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+    .kpi-card { padding: 17px; position: relative; overflow: hidden; min-height: 122px; }
+    .kpi-card::after {
+      content: "";
+      position: absolute;
+      width: 80px;
+      height: 80px;
+      right: -25px;
+      bottom: -28px;
+      border-radius: 50%;
+      background: rgba(22,119,255,.07);
+    }
+    .kpi-label { font-size: 11px; text-transform: uppercase; font-weight: 800; color: var(--muted); letter-spacing: .45px; }
+    .kpi-value { font-size: 26px; font-weight: 850; letter-spacing: -1px; margin: 12px 0 4px; }
+    .kpi-sub { font-size: 12px; color: var(--muted); }
+    .kpi-accent { color: var(--blue); }
+    .kpi-good { color: var(--green); }
+    .kpi-warn { color: var(--amber); }
+    .kpi-bad { color: var(--red); }
+
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 2fr) minmax(310px, .85fr);
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+      margin-bottom: 18px;
+    }
+    .summary-panel { padding: 18px; margin-bottom: 18px; }
+    .summary-scroll { overflow: auto; }
+    .summary-table {
+      width: 100%;
+      min-width: 1200px;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .summary-table th,
+    .summary-table td {
+      border: 1px solid #dfe5ec;
+      padding: 8px 10px;
+      text-align: center;
+      white-space: nowrap;
+    }
+    .summary-table thead th {
+      position: static;
+      background: #f3f7fb;
+      color: #23324a;
+    }
+    .summary-table .section-title {
+      background: #eaf2ff;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .summary-table .group-title {
+      background: #f8fbff;
+      font-weight: 800;
+    }
+    .summary-table .overall-col {
+      background: #fff8dd;
+      font-weight: 800;
+    }
+    .summary-table .stub-col {
+      position: sticky;
+      left: 0;
+      z-index: 1;
+      background: #eef3f8;
+      text-align: left;
+      font-weight: 800;
+    }
+    .summary-table tbody .stub-col {
+      background: #fff;
+      z-index: 0;
+    }
+    .summary-empty {
+      padding: 16px;
+      border: 1px dashed var(--line);
+      border-radius: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      background: #fbfcfe;
+    }
+    .chart-panel { padding: 18px; min-height: 430px; }
+    .chart-controls { display: flex; gap: 8px; flex-wrap: wrap; }
+    .chart-controls select { min-height: 36px; padding: 6px 9px; border-radius: 9px; border: 1px solid var(--line); background: #fff; color: var(--ink); font-size: 12px; }
+    .chart-wrap { position: relative; height: 335px; }
+    .small-chart-wrap { position: relative; height: 285px; }
+    .movement-list { display: grid; gap: 9px; margin-top: 10px; }
+    .movement-item { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; background: #f7f9fc; font-size: 13px; }
+    .movement-item strong { font-size: 14px; }
+
+    .table-panel { overflow: hidden; }
+    .table-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 17px 18px; border-bottom: 1px solid var(--line); }
+    .table-toolbar h3 { margin: 0; font-size: 16px; }
+    .table-actions { display: flex; align-items: center; gap: 9px; }
+    .search-input { min-width: 220px; }
+    .table-scroll { overflow: auto; max-height: 560px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 940px; }
+    thead th { position: sticky; top: 0; z-index: 2; background: #eef3f8; color: #46546a; text-align: left; padding: 12px; font-size: 11px; text-transform: uppercase; letter-spacing: .35px; border-bottom: 1px solid var(--line); }
+    tbody td { padding: 11px 12px; border-bottom: 1px solid #edf0f4; white-space: nowrap; }
+    tbody tr:hover { background: #f8fbff; }
+    .badge { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 999px; font-size: 11px; font-weight: 750; }
+    .badge-good { color: #08734f; background: #e6f8ef; }
+    .badge-bad { color: #ad332b; background: #ffedeb; }
+    .badge-neutral { color: #41546a; background: #edf1f5; }
+    .empty-state { padding: 44px 20px; text-align: center; color: var(--muted); }
+    .footnote { padding: 12px 18px; color: var(--muted); font-size: 11.5px; border-top: 1px solid var(--line); }
+
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      place-items: center;
+      background: rgba(7, 20, 37, .55);
+      padding: 20px;
+      backdrop-filter: blur(4px);
+    }
+    .modal-backdrop.show { display: grid; }
+    .modal { width: min(620px, 100%); background: #fff; border-radius: 18px; box-shadow: 0 30px 80px rgba(0,0,0,.28); overflow: hidden; }
+    .modal-head { padding: 18px 20px; background: var(--navy); color: #fff; display: flex; justify-content: space-between; align-items: center; }
+    .modal-head h3 { margin: 0; }
+    .modal-body { padding: 20px; display: grid; gap: 15px; }
+    .modal-footer { padding: 14px 20px 20px; display: flex; justify-content: flex-end; gap: 9px; }
+    .help { font-size: 12px; color: var(--muted); line-height: 1.55; }
+    .sheet-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; word-break: break-all; background: #f3f5f8; border-radius: 9px; padding: 9px; }
+    .checkbox-row { display: flex; align-items: center; gap: 9px; font-size: 13px; }
+
+    .loading {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: none;
+      place-items: center;
+      background: rgba(245,248,252,.78);
+      backdrop-filter: blur(3px);
+    }
+    .loading.show { display: grid; }
+    .loader-card { display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 14px; padding: 16px 20px; box-shadow: var(--shadow); border: 1px solid var(--line); }
+    .spinner { width: 21px; height: 21px; border: 3px solid #dce7f5; border-top-color: var(--blue); border-radius: 50%; animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 1200px) {
+      .filters { grid-template-columns: repeat(3, 1fr); }
+      .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 860px) {
+      .topbar { padding: 12px 16px; }
+      .cloud-status span:last-child { display: none; }
+      .hero { padding: 22px 16px 16px; grid-template-columns: 1fr; }
+      .upload-box { justify-content: flex-start; }
+      main { padding: 0 16px 26px; }
+      .analytics-grid, .comparison-grid { grid-template-columns: 1fr; }
+      .filters { grid-template-columns: repeat(2, 1fr); }
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .table-toolbar { align-items: flex-start; flex-direction: column; }
+      .table-actions { width: 100%; }
+      .search-input { min-width: 0; flex: 1; }
+    }
+    @media (max-width: 540px) {
+      .brand p { display: none; }
+      .filters { grid-template-columns: 1fr; }
+      .kpi-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+      .kpi-card { padding: 14px; min-height: 110px; }
+      .kpi-value { font-size: 22px; }
+      .chart-panel { padding: 14px; }
+      .chart-wrap { height: 300px; }
+      .section-head { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">TT</div>
+        <div>
+          <h1>Turntime Analytics</h1>
+          <p>Premium, Laden & Direction Dashboard</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <div class="cloud-status" title="Status koneksi Google Sheets">
+          <span id="cloudDot" class="dot warn"></span>
+          <span id="cloudStatusText">Belum terhubung</span>
+        </div>
+        <button id="settingsBtn" class="icon-btn" type="button">⚙ Koneksi</button>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div>
+        <h2>Rekap Turntime Terpusat</h2>
+        <p>Upload satu file Excel dengan worksheet <strong>Prem IN, Prem OUT, Tps IN, Tps OUT,</strong> dan <strong>DEFECT</strong>. Data dapat digabungkan dengan periode sebelumnya, difilter berdasarkan Truck IN, dan dianalisis sampai customer serta Act.</p>
+      </div>
+      <div class="upload-box">
+        <input id="fileInput" type="file" accept=".xlsx,.xls,.xlsm" multiple />
+        <button id="uploadBtn" class="btn btn-primary" type="button">＋ Upload Excel</button>
+        <button id="reloadCloudBtn" class="btn btn-secondary" type="button">↻ Muat Data Tersimpan</button>
+      </div>
+    </section>
+
+    <main>
+      <div id="notice" class="notice"></div>
+
+      <section class="panel filter-panel">
+        <div class="section-head">
+          <div>
+            <h3>Filter Analisis</h3>
+            <p>Seluruh filter tanggal menggunakan kolom Truck IN.</p>
+          </div>
+          <button id="resetFiltersBtn" class="btn btn-ghost" type="button">Reset Filter</button>
+        </div>
+        <div class="filters">
+          <div class="field">
+            <label for="periodMode">Periode</label>
+            <select id="periodMode" class="control">
+              <option value="all">Semua Periode</option>
+              <option value="day">Per Day</option>
+              <option value="week">Per Week</option>
+              <option value="month">Per Month</option>
+              <option value="range">Custom Range</option>
+            </select>
+          </div>
+          <div id="dayField" class="field hidden">
+            <label for="dayInput">Tanggal</label>
+            <input id="dayInput" type="date" class="control" />
+          </div>
+          <div id="weekField" class="field hidden">
+            <label for="weekInput">Minggu</label>
+            <input id="weekInput" type="week" class="control" />
+          </div>
+          <div id="monthField" class="field hidden">
+            <label for="monthInput">Bulan</label>
+            <input id="monthInput" type="month" class="control" />
+          </div>
+          <div id="startField" class="field hidden">
+            <label for="startDateInput">Dari Tanggal</label>
+            <input id="startDateInput" type="date" class="control" />
+          </div>
+          <div id="endField" class="field hidden">
+            <label for="endDateInput">Sampai Tanggal</label>
+            <input id="endDateInput" type="date" class="control" />
+          </div>
+          <div class="field">
+            <label for="customerMultiButton">Customer</label>
+            <div id="customerMulti" class="check-multi">
+              <button id="customerMultiButton" class="control check-multi-trigger" type="button" aria-expanded="false">
+                <span id="customerMultiLabel" class="check-multi-trigger-text">Overall Customer</span>
+                <span class="check-multi-arrow">▾</span>
+              </button>
+              <div id="customerMultiPanel" class="check-multi-panel">
+                <input id="customerMultiSearch" class="control check-multi-search" type="search" placeholder="Cari customer…" />
+                <div class="check-multi-actions">
+                  <button id="customerSelectAllBtn" class="link-btn" type="button">Pilih semua</button>
+                  <button id="customerClearBtn" class="link-btn" type="button">Reset ke overall</button>
+                </div>
+                <div id="customerMultiOptions" class="check-multi-options"></div>
+              </div>
+            </div>
+            <select id="customerFilter" class="hidden" multiple aria-hidden="true" tabindex="-1"></select>
+            <div class="mini-help">Klik dropdown lalu centang satu atau beberapa customer.</div>
+          </div>
+          <div class="field">
+            <label for="movementFilter">Movement</label>
+            <select id="movementFilter" class="control">
+              <option value="ALL">Overall Movement</option>
+              <option value="Premium IN">Premium IN</option>
+              <option value="Premium OUT">Premium OUT</option>
+              <option value="TPS IN">TPS IN</option>
+              <option value="TPS OUT">TPS OUT</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="actMultiButton">Act IN / OUT</label>
+            <div id="actMulti" class="check-multi">
+              <button id="actMultiButton" class="control check-multi-trigger" type="button" aria-expanded="false">
+                <span id="actMultiLabel" class="check-multi-trigger-text">Overall Act</span>
+                <span class="check-multi-arrow">▾</span>
+              </button>
+              <div id="actMultiPanel" class="check-multi-panel">
+                <input id="actMultiSearch" class="control check-multi-search" type="search" placeholder="Cari Act…" />
+                <div class="check-multi-actions">
+                  <button id="actSelectAllBtn" class="link-btn" type="button">Pilih semua</button>
+                  <button id="actClearBtn" class="link-btn" type="button">Reset ke overall</button>
+                </div>
+                <div id="actMultiOptions" class="check-multi-options"></div>
+              </div>
+            </div>
+            <select id="actFilter" class="hidden" multiple aria-hidden="true" tabindex="-1"></select>
+            <div class="mini-help">Centang EX, RP, OH sekaligus atau EVAC untuk gabungan RP + OH.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="kpi-grid">
+        <article class="panel kpi-card"><div class="kpi-label">Average Turntime</div><div id="avgKpi" class="kpi-value kpi-accent">—</div><div class="kpi-sub">Rata-rata menit</div></article>
+        <article class="panel kpi-card"><div class="kpi-label">Median Turntime</div><div id="medianKpi" class="kpi-value">—</div><div class="kpi-sub">Nilai tengah</div></article>
+        <article class="panel kpi-card"><div class="kpi-label">P90 Turntime</div><div id="p90Kpi" class="kpi-value">—</div><div class="kpi-sub">90% transaksi di bawah nilai ini</div></article>
+        <article class="panel kpi-card"><div class="kpi-label">Transaction</div><div id="volumeKpi" class="kpi-value">0</div><div class="kpi-sub">Total movement terfilter</div></article>
+        <article class="panel kpi-card"><div class="kpi-label">Within Target</div><div id="targetKpi" class="kpi-value kpi-good">—</div><div id="targetSub" class="kpi-sub">Target ≤ 60 menit</div></article>
+        <article class="panel kpi-card"><div class="kpi-label">Defect</div><div id="defectKpi" class="kpi-value kpi-warn">0</div><div class="kpi-sub">Total defect terfilter</div></article>
+      </section>
+
+      <section class="analytics-grid">
+        <article class="panel chart-panel">
+          <div class="section-head">
+            <div>
+              <h3>Grafik Analisis</h3>
+              <p>Jenis chart, metrik, dan pengelompokan dapat disesuaikan.</p>
+            </div>
+            <div class="chart-controls">
+              <select id="chartMetric">
+                <option value="avg">Average Turntime</option>
+                <option value="volume">Transaction Volume</option>
+                <option value="target">Target Achievement</option>
+                <option value="defect">Defect Count</option>
+              </select>
+              <select id="chartGroup">
+                <option value="day">By Day</option>
+                <option value="week">By Week</option>
+                <option value="month">By Month</option>
+                <option value="customer">By Customer</option>
+                <option value="movement">By Movement</option>
+                <option value="act">By Act</option>
+              </select>
+              <select id="chartType">
+                <option value="bar">Bar Chart</option>
+                <option value="line">Line Chart</option>
+                <option value="doughnut">Doughnut Chart</option>
+              </select>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
+        </article>
+
+        <article class="panel chart-panel">
+          <div class="section-head">
+            <div>
+              <h3>Defect per Movement</h3>
+              <p>Jumlah baris defect berdasarkan mapping Act.</p>
+            </div>
+          </div>
+          <div class="small-chart-wrap"><canvas id="defectChart"></canvas></div>
+          <div id="movementDefectList" class="movement-list"></div>
+        </article>
+      </section>
+
+      <section class="comparison-grid">
+        <article class="panel chart-panel">
+          <div class="section-head">
+            <div>
+              <h3>Premium & Laden Comparison</h3>
+              <p>Prem IN vs Prem OUT dan Laden IN vs Laden OUT. Laden menggunakan worksheet TPS; filter Movement tidak membatasi grafik ini.</p>
+            </div>
+            <div class="chart-controls">
+              <select id="premiumLadenMetric">
+                <option value="avg">Average Turntime</option>
+                <option value="volume">Transaction Volume</option>
+                <option value="target">Target Achievement</option>
+              </select>
+              <select id="premiumLadenType">
+                <option value="bar">Bar Chart</option>
+                <option value="line">Line Chart</option>
+              </select>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="premiumLadenChart"></canvas></div>
+        </article>
+
+        <article class="panel chart-panel">
+          <div class="section-head">
+            <div>
+              <h3>Inbound & Outbound Comparison</h3>
+              <p>INBOUND = Prem IN + TPS IN. OUTBOUND = Prem OUT + TPS OUT; filter Movement tidak membatasi grafik ini.</p>
+            </div>
+            <div class="chart-controls">
+              <select id="directionMetric">
+                <option value="avg">Average Turntime</option>
+                <option value="volume">Transaction Volume</option>
+                <option value="target">Target Achievement</option>
+              </select>
+              <select id="directionType">
+                <option value="bar">Bar Chart</option>
+                <option value="line">Line Chart</option>
+              </select>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="directionChart"></canvas></div>
+        </article>
+      </section>
+
+      <section class="panel summary-panel">
+        <div class="section-head">
+          <div>
+            <h3>Summary Rekap Premium</h3>
+            <p>Inbound Premium langsung menampilkan average per customer. Outbound Premium tetap dipecah berdasarkan Act dan Overall.</p>
+          </div>
+        </div>
+        <div id="summaryContainer" class="summary-scroll"></div>
+      </section>
+
+      <section class="panel table-panel">
+        <div class="table-toolbar">
+          <div>
+            <h3>Detail Turntime</h3>
+            <div id="tableCount" class="kpi-sub">0 data</div>
+          </div>
+          <div class="table-actions">
+            <input id="searchInput" class="control search-input" type="search" placeholder="Cari customer, container, act…" />
+            <button id="exportBtn" class="btn btn-ghost" type="button">Export CSV</button>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>No.</th>
+                <th>Truck IN</th>
+                <th>Truck OUT</th>
+                <th>Turntime</th>
+                <th>Customer</th>
+                <th>Movement</th>
+                <th>Act</th>
+                <th>Container</th>
+                <th>Source Sheet</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+          <div id="emptyState" class="empty-state">Belum ada data. Upload Excel atau muat data dari Google Sheets.</div>
+        </div>
+        <div class="footnote">Tabel menampilkan maksimal 500 baris agar dashboard tetap ringan. Export CSV tetap memuat seluruh data yang sedang terfilter.</div>
+      </section>
+    </main>
+  </div>
+
+  <div id="settingsModal" class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="settingsTitle">Koneksi Google Sheets</h3>
+        <button id="closeSettingsBtn" class="icon-btn" type="button">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="scriptUrlInput">Google Apps Script Web App URL</label>
+          <input id="scriptUrlInput" class="control" type="url" placeholder="https://script.google.com/macros/s/AKfycbw96ZMcxYh3bH3HF1DbXIUA_qqz8N3WJtrPqpCnQCDjudaAMT3U00WjYkARN2mY-oF9kg/exec" />
+          <div class="help">Tempel URL <strong>/exec</strong> setelah file <strong>Code.gs</strong> di-deploy sebagai Web App.</div>
+        </div>
+        <div class="field">
+          <label for="apiTokenInput">API Token</label>
+          <input id="apiTokenInput" class="control" type="password" placeholder="Samakan dengan API_TOKEN pada Code.gs" />
+        </div>
+        <div class="field">
+          <label for="targetInput">Target Turntime (menit)</label>
+          <input id="targetInput" class="control" type="number" min="1" step="1" value="60" />
+        </div>
+        <label class="checkbox-row"><input id="autoSaveInput" type="checkbox" checked /> Simpan otomatis setiap selesai upload Excel</label>
+        <div class="help">Spreadsheet tujuan:</div>
+        <div class="sheet-id">1L6w5NxZci10IidsOj8rXvK8JYpSHE1_py84n3avZBCY</div>
+      </div>
+      <div class="modal-footer">
+        <button id="testConnectionBtn" class="btn btn-secondary" type="button">Tes & Muat Data</button>
+        <button id="saveSettingsBtn" class="btn btn-primary" type="button">Simpan Pengaturan</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="loading" class="loading"><div class="loader-card"><div class="spinner"></div><div id="loadingText">Memproses data…</div></div></div>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const REQUIRED_SHEETS = ['Prem IN', 'Prem OUT', 'Tps IN', 'Tps OUT', 'DEFECT'];
+      const MOVEMENTS = ['Premium IN', 'Premium OUT', 'TPS IN', 'TPS OUT'];
+      const SPREADSHEET_ID = '1L6w5NxZci10IidsOj8rXvK8JYpSHE1_py84n3avZBCY';
+      const SETTINGS_KEY = 'turntimeDashboardSettingsV1';
+
+      const state = {
+        records: [],
+        defects: [],
+        uploadSheets: {},
+        filteredRecords: [],
+        filteredDefects: [],
+        mainChart: null,
+        defectChart: null,
+        premiumLadenChart: null,
+        directionChart: null,
+        settings: {
+          scriptUrl: '',
+          apiToken: '',
+          targetMinutes: 60,
+          autoSave: true
+        }
+      };
+
+      const el = id => document.getElementById(id);
+      const els = {
+        fileInput: el('fileInput'), uploadBtn: el('uploadBtn'), reloadCloudBtn: el('reloadCloudBtn'),
+        settingsBtn: el('settingsBtn'), settingsModal: el('settingsModal'), closeSettingsBtn: el('closeSettingsBtn'),
+        scriptUrlInput: el('scriptUrlInput'), apiTokenInput: el('apiTokenInput'), targetInput: el('targetInput'), autoSaveInput: el('autoSaveInput'),
+        saveSettingsBtn: el('saveSettingsBtn'), testConnectionBtn: el('testConnectionBtn'),
+        cloudDot: el('cloudDot'), cloudStatusText: el('cloudStatusText'), notice: el('notice'),
+        loading: el('loading'), loadingText: el('loadingText'),
+        periodMode: el('periodMode'), dayField: el('dayField'), weekField: el('weekField'), monthField: el('monthField'), startField: el('startField'), endField: el('endField'),
+        dayInput: el('dayInput'), weekInput: el('weekInput'), monthInput: el('monthInput'), startDateInput: el('startDateInput'), endDateInput: el('endDateInput'),
+        customerFilter: el('customerFilter'), movementFilter: el('movementFilter'), actFilter: el('actFilter'), resetFiltersBtn: el('resetFiltersBtn'), searchInput: el('searchInput'),
+        customerSelectAllBtn: el('customerSelectAllBtn'), customerClearBtn: el('customerClearBtn'), actSelectAllBtn: el('actSelectAllBtn'), actClearBtn: el('actClearBtn'), summaryContainer: el('summaryContainer'),
+        customerMulti: el('customerMulti'), customerMultiButton: el('customerMultiButton'), customerMultiLabel: el('customerMultiLabel'), customerMultiPanel: el('customerMultiPanel'), customerMultiSearch: el('customerMultiSearch'), customerMultiOptions: el('customerMultiOptions'),
+        actMulti: el('actMulti'), actMultiButton: el('actMultiButton'), actMultiLabel: el('actMultiLabel'), actMultiPanel: el('actMultiPanel'), actMultiSearch: el('actMultiSearch'), actMultiOptions: el('actMultiOptions'),
+        avgKpi: el('avgKpi'), medianKpi: el('medianKpi'), p90Kpi: el('p90Kpi'), volumeKpi: el('volumeKpi'), targetKpi: el('targetKpi'), targetSub: el('targetSub'), defectKpi: el('defectKpi'),
+        chartMetric: el('chartMetric'), chartGroup: el('chartGroup'), chartType: el('chartType'), mainChartCanvas: el('mainChart'), defectChartCanvas: el('defectChart'), movementDefectList: el('movementDefectList'),
+        premiumLadenMetric: el('premiumLadenMetric'), premiumLadenType: el('premiumLadenType'), premiumLadenChartCanvas: el('premiumLadenChart'),
+        directionMetric: el('directionMetric'), directionType: el('directionType'), directionChartCanvas: el('directionChart'),
+        tableBody: el('tableBody'), tableCount: el('tableCount'), emptyState: el('emptyState'), exportBtn: el('exportBtn')
+      };
+
+      function init() {
+        loadSettings();
+        bindEvents();
+        syncSettingsForm();
+        updateConnectionStatus(false);
+        applyPeriodFieldVisibility();
+        updateDynamicFilters();
+        applyFilters();
+        if (!window.XLSX || !window.Chart) {
+          showNotice('Library Excel atau grafik gagal dimuat. Pastikan perangkat terhubung ke internet lalu refresh halaman.', 'error');
+        }
+        if (state.settings.scriptUrl) loadCloudData(false);
+      }
+
+      function bindEvents() {
+        els.uploadBtn.addEventListener('click', () => els.fileInput.click());
+        els.fileInput.addEventListener('change', handleFiles);
+        els.reloadCloudBtn.addEventListener('click', () => loadCloudData(true));
+        els.settingsBtn.addEventListener('click', openSettings);
+        els.closeSettingsBtn.addEventListener('click', closeSettings);
+        els.settingsModal.addEventListener('click', e => { if (e.target === els.settingsModal) closeSettings(); });
+        els.saveSettingsBtn.addEventListener('click', saveSettingsFromForm);
+        els.testConnectionBtn.addEventListener('click', async () => { saveSettingsFromForm(false); await loadCloudData(true); });
+        els.periodMode.addEventListener('change', () => { applyPeriodFieldVisibility(); applyFilters(); });
+        [els.dayInput, els.weekInput, els.monthInput, els.startDateInput, els.endDateInput, els.movementFilter]
+          .forEach(node => node.addEventListener('change', () => {
+            if (node === els.movementFilter) updateActFilter();
+            applyFilters();
+          }));
+        setupCheckboxMultiSelect(els.customerFilter);
+        setupCheckboxMultiSelect(els.actFilter);
+        els.customerSelectAllBtn.addEventListener('click', e => { e.stopPropagation(); selectAllMulti(els.customerFilter); renderCheckboxMultiSelect(els.customerFilter); applyFilters(); });
+        els.customerClearBtn.addEventListener('click', e => { e.stopPropagation(); resetMultiToAll(els.customerFilter); renderCheckboxMultiSelect(els.customerFilter); applyFilters(); });
+        els.actSelectAllBtn.addEventListener('click', e => { e.stopPropagation(); selectAllMulti(els.actFilter); renderCheckboxMultiSelect(els.actFilter); applyFilters(); });
+        els.actClearBtn.addEventListener('click', e => { e.stopPropagation(); resetMultiToAll(els.actFilter); renderCheckboxMultiSelect(els.actFilter); applyFilters(); });
+        els.searchInput.addEventListener('input', applyFilters);
+        els.resetFiltersBtn.addEventListener('click', resetFilters);
+        [els.chartMetric, els.chartGroup, els.chartType].forEach(node => node.addEventListener('change', renderMainChart));
+        [els.premiumLadenMetric, els.premiumLadenType].forEach(node => node.addEventListener('change', renderPremiumLadenChart));
+        [els.directionMetric, els.directionType].forEach(node => node.addEventListener('change', renderDirectionChart));
+        els.exportBtn.addEventListener('click', exportCsv);
+        document.addEventListener('click', e => {
+          if (!e.target.closest('.check-multi')) closeAllCheckboxMultiSelects();
+        });
+        document.addEventListener('keydown', e => {
+          if (e.key === 'Escape') {
+            closeSettings();
+            closeAllCheckboxMultiSelects();
+          }
+        });
+      }
+
+      function loadSettings() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+          state.settings = { ...state.settings, ...saved };
+        } catch (_) {}
+      }
+
+      function syncSettingsForm() {
+        els.scriptUrlInput.value = state.settings.scriptUrl || '';
+        els.apiTokenInput.value = state.settings.apiToken || '';
+        els.targetInput.value = state.settings.targetMinutes || 60;
+        els.autoSaveInput.checked = state.settings.autoSave !== false;
+        els.targetSub.textContent = `Target ≤ ${Number(state.settings.targetMinutes || 60)} menit`;
+      }
+
+      function saveSettingsFromForm(close = true) {
+        state.settings.scriptUrl = els.scriptUrlInput.value.trim();
+        state.settings.apiToken = els.apiTokenInput.value.trim();
+        state.settings.targetMinutes = Math.max(1, Number(els.targetInput.value || 60));
+        state.settings.autoSave = els.autoSaveInput.checked;
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+        syncSettingsForm();
+        updateConnectionStatus(false);
+        applyFilters();
+        showNotice('Pengaturan dashboard berhasil disimpan pada browser ini.', 'success');
+        if (close) closeSettings();
+      }
+
+      function openSettings() { syncSettingsForm(); els.settingsModal.classList.add('show'); }
+      function closeSettings() { els.settingsModal.classList.remove('show'); }
+
+      function updateConnectionStatus(connected, text) {
+        const configured = Boolean(state.settings.scriptUrl);
+        els.cloudDot.className = `dot ${connected ? 'ok' : 'warn'}`;
+        els.cloudStatusText.textContent = text || (connected ? 'Google Sheets terhubung' : configured ? 'Koneksi belum diuji' : 'Belum terhubung');
+      }
+
+      function showLoading(message) {
+        els.loadingText.textContent = message || 'Memproses data…';
+        els.loading.classList.add('show');
+      }
+      function hideLoading() { els.loading.classList.remove('show'); }
+
+      function showNotice(message, type = 'info') {
+        els.notice.textContent = message;
+        els.notice.className = `notice show ${type}`;
+        clearTimeout(showNotice.timer);
+        showNotice.timer = setTimeout(() => els.notice.classList.remove('show'), 9000);
+      }
+
+      async function handleFiles(event) {
+        const files = Array.from(event.target.files || []);
+        if (!files.length) return;
+        if (!window.XLSX) return showNotice('Library pembaca Excel belum tersedia.', 'error');
+        showLoading(`Membaca ${files.length} file Excel…`);
+        try {
+          const collected = {};
+          const missingReports = [];
+          for (const file of files) {
+            const buffer = await file.arrayBuffer();
+            const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+            const missing = REQUIRED_SHEETS.filter(name => !findSheetName(workbook.SheetNames, name));
+            if (missing.length) missingReports.push(`${file.name}: ${missing.join(', ')}`);
+
+            for (const requiredName of REQUIRED_SHEETS) {
+              const actualName = findSheetName(workbook.SheetNames, requiredName);
+              if (!actualName) continue;
+              const worksheet = workbook.Sheets[actualName];
+              const rows = requiredName === 'DEFECT'
+                ? parseDefectWorksheet(worksheet)
+                : XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: true });
+              if (!collected[requiredName]) collected[requiredName] = [];
+              rows.forEach(row => collected[requiredName].push({
+                ...row,
+                __SOURCE_FILE: file.name,
+                __UPLOADED_AT: new Date().toISOString()
+              }));
+            }
+          }
+
+          state.uploadSheets = collected;
+          mergeNormalizedSheets(collected);
+          const importedDefects = (collected.DEFECT || []).map(normalizeDefectRow).filter(Boolean);
+          const defectsWithoutTruckIn = importedDefects.filter(row => !row.truckIn).length;
+          const dataQualityNote = defectsWithoutTruckIn
+            ? ` ${defectsWithoutTruckIn} defect tidak memiliki Truck IN dan hanya dihitung saat periode Overall.`
+            : '';
+
+          if (missingReports.length) {
+            showNotice(`Beberapa worksheet tidak ditemukan: ${missingReports.join(' | ')}. Worksheet yang tersedia tetap diproses.${dataQualityNote}`, 'info');
+          } else {
+            showNotice(`${files.length} file berhasil dibaca dan digabungkan ke dashboard.${dataQualityNote}`, 'success');
+          }
+
+          if (state.settings.autoSave && state.settings.scriptUrl) {
+            await saveSheetsToCloud(collected);
+          } else if (!state.settings.scriptUrl) {
+            showNotice('Data sudah tampil, tetapi belum tersimpan permanen karena URL Google Apps Script belum diatur.', 'info');
+          }
+        } catch (error) {
+          console.error(error);
+          showNotice(`Gagal membaca Excel: ${error.message || error}`, 'error');
+        } finally {
+          els.fileInput.value = '';
+          hideLoading();
+        }
+      }
+
+      function findSheetName(sheetNames, expected) {
+        const clean = value => String(value).trim().toLowerCase().replace(/\s+/g, ' ');
+        return sheetNames.find(name => clean(name) === clean(expected));
+      }
+
+      // Worksheet Defect pada file operasional dapat berisi beberapa tabel bertumpuk
+      // dengan header Act IN dan Act OUT yang berbeda. Parser ini membaca ulang header
+      // setiap section agar seluruh defect tetap masuk ke movement yang benar.
+      function parseDefectWorksheet(worksheet) {
+        const matrix = XLSX.utils.sheet_to_json(worksheet, {
+          header: 1,
+          defval: '',
+          raw: true,
+          blankrows: true
+        });
+        const rows = [];
+        let headers = null;
+
+        for (const cells of matrix) {
+          if (!Array.isArray(cells) || !cells.some(value => String(value ?? '').trim() !== '')) continue;
+
+          const normalizedCells = cells.map(normalizeHeader);
+          const isHeader = normalizedCells.includes('NO')
+            && (normalizedCells.includes('ACTIN') || normalizedCells.includes('ACTOUT'));
+
+          if (isHeader) {
+            headers = cells.map(value => cleanText(value));
+            continue;
+          }
+          if (!headers) continue;
+
+          const row = {};
+          headers.forEach((header, index) => {
+            if (header) row[header] = cells[index] ?? '';
+          });
+
+          const act = getField(row, ['ACT IN', 'ACT OUT', 'ACT']);
+          const noValue = getField(row, ['NO']);
+          if (!act || normalizeHeader(noValue) === 'NO') continue;
+          rows.push(row);
+        }
+        return rows;
+      }
+
+      function mergeNormalizedSheets(sheetMap) {
+        const records = [];
+        const defects = [];
+        for (const [sheetName, rows] of Object.entries(sheetMap || {})) {
+          for (const raw of rows || []) {
+            if (sheetName === 'DEFECT') {
+              const defect = normalizeDefectRow(raw);
+              if (defect) defects.push(defect);
+            } else {
+              const record = normalizeTurntimeRow(raw, sheetName);
+              if (record) records.push(record);
+            }
+          }
+        }
+        state.records = dedupeByKey([...state.records, ...records]);
+        state.defects = dedupeByKey([...state.defects, ...defects]);
+        updateDynamicFilters();
+        applyFilters();
+      }
+
+      function normalizeTurntimeRow(raw, sheetName) {
+        const truckInValue = getField(raw, ['TRUCK IN', 'TRUCK_IN', 'TRUCKIN', 'DTM IN', 'DTM_IN', 'GATE IN']);
+        const truckOutValue = getField(raw, ['TRUCK OUT', 'TRUCK_OUT', 'TRUCKOUT', 'DTM OUT', 'DTM_OUT', 'GATE OUT']);
+        const truckIn = parseDateValue(truckInValue);
+        const truckOut = parseDateValue(truckOutValue);
+        let turntime = truckIn && truckOut ? (truckOut - truckIn) / 60000 : null;
+        if (!Number.isFinite(turntime)) {
+          const provided = Number(String(getField(raw, ['TURNTIME', 'TURN TIME', 'TURN_TIME', 'MINUTES', 'MINUTE', 'MENIT'])).replace(',', '.'));
+          turntime = Number.isFinite(provided) ? provided : null;
+        }
+        if (turntime !== null && (turntime < 0 || turntime > 10080)) turntime = null;
+
+        const actRaw = getField(raw, actAliasesForSheet(sheetName));
+        const act = canonicalAct(actRaw);
+        const movement = movementFromSheet(sheetName);
+        const customer = cleanText(getField(raw, ['CUSTOMER', 'CUSTOMER NAME', 'CUSTOMER_NAME', 'CUST', 'CLIENT', 'LINE', 'LINER'])) || 'Unknown';
+        const container = cleanText(getField(raw, ['CONT', 'CONTAINER', 'CONTAINER NO', 'CONTAINER NUMBER', 'CONTAINER_NO', 'CNTR', 'CNTR NO', 'EQUIPMENT NO', 'EQUIPMENT NUMBER'])) || '-';
+        const sourceFile = cleanText(raw.__SOURCE_FILE) || '-';
+        const rowKey = cleanText(raw.__ROW_KEY) || hashRow(sheetName, raw);
+
+        if (!truckIn && turntime === null && customer === 'Unknown' && container === '-') return null;
+        return { rowKey, sourceSheet: sheetName, movement, act: act || 'Unknown', customer, container, truckIn, truckOut, turntimeMinutes: turntime, sourceFile, raw };
+      }
+
+      function normalizeDefectRow(raw) {
+        const act = canonicalAct(getField(raw, ['ACT', 'ACT IN', 'ACT OUT', 'ACTIVITY', 'MOVEMENT', 'TRANSACTION']));
+        const movement = movementFromDefectAct(act);
+        if (!movement) return null;
+        const truckIn = parseDateValue(getField(raw, ['TRUCK IN', 'TRUCK_IN', 'TRUCKIN', 'DTM IN', 'DTM_IN', 'GATE IN']));
+        const customer = cleanText(getField(raw, ['CUSTOMER', 'CUSTOMER NAME', 'CUSTOMER_NAME', 'CUST', 'CLIENT', 'LINE', 'LINER'])) || 'Unknown';
+        const container = cleanText(getField(raw, ['CONT', 'CONTAINER', 'CONTAINER NO', 'CONTAINER NUMBER', 'CONTAINER_NO', 'CNTR', 'CNTR NO', 'EQUIPMENT NO', 'EQUIPMENT NUMBER'])) || '-';
+        const rowKey = cleanText(raw.__ROW_KEY) || hashRow('DEFECT', raw);
+        return { rowKey, sourceSheet: 'DEFECT', movement, act, customer, container, truckIn, raw };
+      }
+
+      function actAliasesForSheet(sheetName) {
+        if (sheetName === 'Prem IN' || sheetName === 'Tps IN') return ['ACT IN', 'ACT_IN', 'ACTIN', 'ACT', 'ACTIVITY', 'MOVEMENT'];
+        if (sheetName === 'Prem OUT' || sheetName === 'Tps OUT') return ['ACT OUT', 'ACT_OUT', 'ACTOUT', 'ACT', 'ACTIVITY', 'MOVEMENT'];
+        return ['ACT', 'ACTIVITY', 'MOVEMENT'];
+      }
+
+      function movementFromSheet(sheetName) {
+        return ({ 'Prem IN': 'Premium IN', 'Prem OUT': 'Premium OUT', 'Tps IN': 'TPS IN', 'Tps OUT': 'TPS OUT' })[sheetName] || sheetName;
+      }
+
+      function movementFromDefectAct(act) {
+        const a = canonicalAct(act);
+        if (['IM', 'OB'].includes(a)) return 'Premium IN';
+        if (['EX', 'RP', 'OH', 'EVAC'].includes(a)) return 'Premium OUT';
+        if (['IM-FULL', 'IM-EMPTY'].includes(a)) return 'TPS IN';
+        if (['RP-FULL', 'RP-EMPTY'].includes(a)) return 'TPS OUT';
+        return null;
+      }
+
+      function canonicalAct(value) {
+        const a = cleanText(value)
+          .toUpperCase()
+          .replace(/[^A-Z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '')
+          .replace(/-+/g, '-');
+        const compact = a.replace(/-/g, '');
+        const aliases = {
+          'EVACUATION': 'EVAC', 'EVACUATE': 'EVAC', 'EVAKUASI': 'EVAC',
+          'IMFULL': 'IM-FULL', 'IMEMPTY': 'IM-EMPTY',
+          'RPFULL': 'RP-FULL', 'RPEMPTY': 'RP-EMPTY'
+        };
+        return aliases[a] || aliases[compact] || a;
+      }
+
+      function getField(row, aliases) {
+        const normalized = {};
+        for (const [key, value] of Object.entries(row || {})) normalized[normalizeHeader(key)] = value;
+        for (const alias of aliases) {
+          const value = normalized[normalizeHeader(alias)];
+          if (value !== undefined && value !== null && String(value).trim() !== '') return value;
+        }
+        return '';
+      }
+
+      function normalizeHeader(value) { return String(value).trim().toUpperCase().replace(/[^A-Z0-9]+/g, ''); }
+      function cleanText(value) { return String(value ?? '').trim(); }
+
+      function parseDateValue(value) {
+        if (!value && value !== 0) return null;
+        if (value instanceof Date && !isNaN(value)) return value;
+        if (typeof value === 'number' && value > 20000 && value < 100000) {
+          const utcDays = Math.floor(value - 25569);
+          const utcValue = utcDays * 86400;
+          const dateInfo = new Date(utcValue * 1000);
+          const fractionalDay = value - Math.floor(value) + 0.0000001;
+          let totalSeconds = Math.floor(86400 * fractionalDay);
+          const seconds = totalSeconds % 60;
+          totalSeconds -= seconds;
+          const hours = Math.floor(totalSeconds / 3600);
+          const minutes = Math.floor(totalSeconds / 60) % 60;
+          return new Date(dateInfo.getUTCFullYear(), dateInfo.getUTCMonth(), dateInfo.getUTCDate(), hours, minutes, seconds);
+        }
+        const text = String(value).trim();
+        if (!text) return null;
+        const direct = new Date(text);
+        if (!isNaN(direct)) return direct;
+        const match = text.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+        if (match) {
+          let year = Number(match[3]);
+          if (year < 100) year += 2000;
+          const date = new Date(year, Number(match[2]) - 1, Number(match[1]), Number(match[4] || 0), Number(match[5] || 0), Number(match[6] || 0));
+          return isNaN(date) ? null : date;
+        }
+        return null;
+      }
+
+      function stableStringify(obj) {
+        if (obj === null || typeof obj !== 'object') return JSON.stringify(obj);
+        if (obj instanceof Date) return JSON.stringify(obj.toISOString());
+        if (Array.isArray(obj)) return `[${obj.map(stableStringify).join(',')}]`;
+        return `{${Object.keys(obj).filter(k => !['__ROW_KEY','__UPLOADED_AT','__SOURCE_FILE'].includes(k)).sort().map(k => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',')}}`;
+      }
+
+      function hashRow(sheetName, row) {
+        const str = `${sheetName}|${stableStringify(row)}`;
+        let hash = 2166136261;
+        for (let i = 0; i < str.length; i++) {
+          hash ^= str.charCodeAt(i);
+          hash = Math.imul(hash, 16777619);
+        }
+        return `${sheetName.replace(/\s/g, '')}-${(hash >>> 0).toString(16)}`;
+      }
+
+      function dedupeByKey(items) {
+        const map = new Map();
+        for (const item of items) if (item && item.rowKey) map.set(item.rowKey, item);
+        return [...map.values()];
+      }
+
+      function updateDynamicFilters() {
+        const selectedCustomers = getSelectedValues(els.customerFilter);
+        const customers = [...new Set([...state.records.map(r => r.customer), ...state.defects.map(d => d.customer)].filter(Boolean))].sort((a,b) => a.localeCompare(b));
+        setMultiOptions(els.customerFilter, customers, selectedCustomers, 'Overall Customer');
+        updateActFilter();
+      }
+
+      function updateActFilter() {
+        const selected = getSelectedValues(els.actFilter);
+        const movement = els.movementFilter.value;
+        const source = [...state.records, ...state.defects].filter(x => movement === 'ALL' || x.movement === movement);
+        const rawActs = [...new Set(source.map(x => canonicalAct(x.act)).filter(Boolean))];
+        const hasEvac = rawActs.some(a => ['RP', 'OH', 'EVAC'].includes(a));
+        const acts = rawActs.filter(a => a !== 'EVAC');
+        if (hasEvac) acts.push('EVAC_GROUP');
+        const order = ['IM', 'OB', 'EX', 'RP', 'OH', 'EVAC_GROUP', 'IM-FULL', 'IM-EMPTY', 'RP-FULL', 'RP-EMPTY'];
+        acts.sort((a,b) => {
+          const ai = order.indexOf(a), bi = order.indexOf(b);
+          if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+          return a.localeCompare(b);
+        });
+        setMultiOptions(els.actFilter, acts, selected, 'Overall Act', value => displayActLabel(value));
+      }
+
+      function displayActLabel(act) {
+        return act === 'EVAC_GROUP' ? 'EVAC (RP + OH)' : act;
+      }
+
+      function matchesActSelection(itemAct, selectedActs) {
+        if (isAllSelection(selectedActs)) return true;
+        const act = canonicalAct(itemAct);
+        return selectedActs.some(selectedAct => {
+          if (selectedAct === 'EVAC_GROUP') return ['RP', 'OH', 'EVAC'].includes(act);
+          return act === selectedAct;
+        });
+      }
+
+      function applyPeriodFieldVisibility() {
+        const mode = els.periodMode.value;
+        els.dayField.classList.toggle('hidden', mode !== 'day');
+        els.weekField.classList.toggle('hidden', mode !== 'week');
+        els.monthField.classList.toggle('hidden', mode !== 'month');
+        els.startField.classList.toggle('hidden', mode !== 'range');
+        els.endField.classList.toggle('hidden', mode !== 'range');
+      }
+
+      function resetFilters() {
+        els.periodMode.value = 'all';
+        els.dayInput.value = '';
+        els.weekInput.value = '';
+        els.monthInput.value = '';
+        els.startDateInput.value = '';
+        els.endDateInput.value = '';
+        resetMultiToAll(els.customerFilter);
+        els.movementFilter.value = 'ALL';
+        updateActFilter();
+        resetMultiToAll(els.actFilter);
+        els.searchInput.value = '';
+        applyPeriodFieldVisibility();
+        applyFilters();
+      }
+
+      function applyFilters() {
+        const customers = getSelectedValues(els.customerFilter);
+        const movement = els.movementFilter.value;
+        const acts = getSelectedValues(els.actFilter);
+        const search = els.searchInput.value.trim().toLowerCase();
+
+        const common = item => {
+          if (!matchesPeriod(item.truckIn)) return false;
+          if (!matchesMultiSelection(item.customer, customers)) return false;
+          if (movement !== 'ALL' && item.movement !== movement) return false;
+          if (!matchesActSelection(item.act, acts)) return false;
+          return true;
+        };
+        state.filteredRecords = state.records.filter(item => {
+          if (!common(item)) return false;
+          if (!search) return true;
+          return [item.customer, item.container, item.act, item.movement, item.sourceSheet, item.sourceFile].some(value => String(value).toLowerCase().includes(search));
+        });
+        state.filteredDefects = state.defects.filter(common);
+        renderAll();
+      }
+
+      function matchesPeriod(date) {
+        const mode = els.periodMode.value;
+        if (mode === 'all') return true;
+        if (!date || isNaN(date)) return false;
+        const isoDate = toIsoDate(date);
+        if (mode === 'day') return !els.dayInput.value || isoDate === els.dayInput.value;
+        if (mode === 'month') return !els.monthInput.value || isoDate.slice(0,7) === els.monthInput.value;
+        if (mode === 'week') return !els.weekInput.value || getIsoWeekKey(date) === els.weekInput.value;
+        if (mode === 'range') {
+          if (els.startDateInput.value && isoDate < els.startDateInput.value) return false;
+          if (els.endDateInput.value && isoDate > els.endDateInput.value) return false;
+          return true;
+        }
+        return true;
+      }
+
+      function renderAll() {
+        renderKpis();
+        renderSummary();
+        renderMainChart();
+        renderDefectChart();
+        renderPremiumLadenChart();
+        renderDirectionChart();
+        renderTable();
+      }
+
+      function renderKpis() {
+        const valid = state.filteredRecords.map(r => r.turntimeMinutes).filter(Number.isFinite).sort((a,b) => a-b);
+        const avg = valid.length ? valid.reduce((a,b) => a+b, 0) / valid.length : null;
+        const median = percentile(valid, 50);
+        const p90 = percentile(valid, 90);
+        const target = Number(state.settings.targetMinutes || 60);
+        const within = valid.length ? (valid.filter(v => v <= target).length / valid.length) * 100 : null;
+        els.avgKpi.textContent = formatMinutes(avg);
+        els.medianKpi.textContent = formatMinutes(median);
+        els.p90Kpi.textContent = formatMinutes(p90);
+        els.volumeKpi.textContent = formatNumber(state.filteredRecords.length);
+        els.targetKpi.textContent = within === null ? '—' : `${within.toFixed(1)}%`;
+        els.targetKpi.className = `kpi-value ${within === null ? '' : within >= 90 ? 'kpi-good' : within >= 75 ? 'kpi-warn' : 'kpi-bad'}`;
+        els.targetSub.textContent = `Target ≤ ${target} menit`;
+        els.defectKpi.textContent = formatNumber(state.filteredDefects.length);
+      }
+
+      function renderMainChart() {
+        if (!window.Chart) return;
+        const metric = els.chartMetric.value;
+        const group = els.chartGroup.value;
+        const type = els.chartType.value;
+        const source = metric === 'defect' ? state.filteredDefects : state.filteredRecords;
+        const grouped = new Map();
+        for (const item of source) {
+          const key = groupKey(item, group);
+          if (!key) continue;
+          if (!grouped.has(key)) grouped.set(key, []);
+          grouped.get(key).push(item);
+        }
+        let entries = [...grouped.entries()];
+        if (['day','week','month'].includes(group)) entries.sort((a,b) => a[0].localeCompare(b[0]));
+        else entries.sort((a,b) => b[1].length - a[1].length);
+        if (['customer','act'].includes(group)) entries = entries.slice(0, 20);
+
+        const labels = entries.map(([key]) => displayGroupKey(key, group));
+        const values = entries.map(([, items]) => {
+          if (metric === 'volume' || metric === 'defect') return items.length;
+          const vals = items.map(i => i.turntimeMinutes).filter(Number.isFinite);
+          if (!vals.length) return 0;
+          if (metric === 'avg') return Number((vals.reduce((a,b) => a+b,0) / vals.length).toFixed(2));
+          if (metric === 'target') return Number((vals.filter(v => v <= state.settings.targetMinutes).length / vals.length * 100).toFixed(2));
+          return 0;
+        });
+
+        const titleMap = { avg: 'Average Turntime (Minutes)', volume: 'Transaction Volume', target: 'Target Achievement (%)', defect: 'Defect Count' };
+        const datasets = [{ label: titleMap[metric], data: values, borderWidth: 2, tension: .28, fill: false }];
+        if (metric === 'avg' && type !== 'doughnut' && labels.length) {
+          datasets.push({ label: `Target ${state.settings.targetMinutes} Minutes`, data: labels.map(() => state.settings.targetMinutes), type: 'line', borderDash: [7,5], pointRadius: 0, borderWidth: 2 });
+        }
+
+        if (state.mainChart) state.mainChart.destroy();
+        state.mainChart = new Chart(els.mainChartCanvas, {
+          type,
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 18 } },
+              tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${formatChartValue(ctx.raw, metric)}` } }
+            },
+            scales: type === 'doughnut' ? {} : {
+              x: { grid: { display: false }, ticks: { maxRotation: 45, minRotation: 0 } },
+              y: { beginAtZero: true, grid: { color: 'rgba(120,135,155,.15)' }, ticks: { callback: value => metric === 'target' ? `${value}%` : value } }
+            }
+          }
+        });
+      }
+
+
+      function getComparisonRecords() {
+        const customers = getSelectedValues(els.customerFilter);
+        const acts = getSelectedValues(els.actFilter);
+        const search = els.searchInput.value.trim().toLowerCase();
+        return state.records.filter(item => {
+          if (!matchesPeriod(item.truckIn)) return false;
+          if (!matchesMultiSelection(item.customer, customers)) return false;
+          if (!matchesActSelection(item.act, acts)) return false;
+          if (search && ![item.customer, item.container, item.act, item.movement, item.sourceSheet, item.sourceFile].some(value => String(value).toLowerCase().includes(search))) return false;
+          return true;
+        });
+      }
+
+      function calculateComparisonMetric(items, metric) {
+        if (metric === 'volume') return items.length;
+        const values = items.map(item => item.turntimeMinutes).filter(Number.isFinite);
+        if (!values.length) return null;
+        if (metric === 'avg') return Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2));
+        if (metric === 'target') return Number((values.filter(value => value <= state.settings.targetMinutes).length / values.length * 100).toFixed(2));
+        return null;
+      }
+
+      function renderComparisonChart(canvas, chartKey, definitions, metric, type, datasetLabel) {
+        if (!window.Chart || !canvas) return;
+        const source = getComparisonRecords();
+        const labels = definitions.map(item => item.label);
+        const values = definitions.map(item => calculateComparisonMetric(source.filter(record => item.movements.includes(record.movement)), metric));
+        const datasets = [{ label: datasetLabel, data: values, borderWidth: 2, tension: .28, fill: false }];
+        if (metric === 'avg' && labels.length) {
+          datasets.push({ label: `Target ${state.settings.targetMinutes} Minutes`, data: labels.map(() => state.settings.targetMinutes), type: 'line', borderDash: [7,5], pointRadius: 0, borderWidth: 2 });
+        }
+        if (state[chartKey]) state[chartKey].destroy();
+        state[chartKey] = new Chart(canvas, {
+          type,
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 18 } },
+              tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${formatChartValue(ctx.raw, metric)}` } }
+            },
+            scales: {
+              x: { grid: { display: false } },
+              y: { beginAtZero: true, grid: { color: 'rgba(120,135,155,.15)' }, ticks: { callback: value => metric === 'target' ? `${value}%` : value } }
+            }
+          }
+        });
+      }
+
+      function renderPremiumLadenChart() {
+        const metric = els.premiumLadenMetric.value;
+        const type = els.premiumLadenType.value;
+        const labelMap = { avg: 'Average Turntime (Minutes)', volume: 'Transaction Volume', target: 'Target Achievement (%)' };
+        renderComparisonChart(
+          els.premiumLadenChartCanvas,
+          'premiumLadenChart',
+          [
+            { label: 'Prem IN', movements: ['Premium IN'] },
+            { label: 'Prem OUT', movements: ['Premium OUT'] },
+            { label: 'Laden IN', movements: ['TPS IN'] },
+            { label: 'Laden OUT', movements: ['TPS OUT'] }
+          ],
+          metric,
+          type,
+          labelMap[metric]
+        );
+      }
+
+      function renderDirectionChart() {
+        const metric = els.directionMetric.value;
+        const type = els.directionType.value;
+        const labelMap = { avg: 'Average Turntime (Minutes)', volume: 'Transaction Volume', target: 'Target Achievement (%)' };
+        renderComparisonChart(
+          els.directionChartCanvas,
+          'directionChart',
+          [
+            { label: 'INBOUND', movements: ['Premium IN', 'TPS IN'] },
+            { label: 'OUTBOUND', movements: ['Premium OUT', 'TPS OUT'] }
+          ],
+          metric,
+          type,
+          labelMap[metric]
+        );
+      }
+
+      function renderDefectChart() {
+        if (!window.Chart) return;
+        const counts = MOVEMENTS.map(m => state.filteredDefects.filter(d => d.movement === m).length);
+        if (state.defectChart) state.defectChart.destroy();
+        state.defectChart = new Chart(els.defectChartCanvas, {
+          type: 'doughnut',
+          data: { labels: MOVEMENTS, datasets: [{ data: counts, borderWidth: 2, borderColor: '#fff' }] },
+          options: { responsive: true, maintainAspectRatio: false, cutout: '64%', plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8 } } } }
+        });
+        els.movementDefectList.innerHTML = MOVEMENTS.map((movement, i) => `<div class="movement-item"><span>${movement}</span><strong>${formatNumber(counts[i])}</strong></div>`).join('');
+      }
+
+      function renderTable() {
+        const target = Number(state.settings.targetMinutes || 60);
+        const rows = state.filteredRecords.slice().sort((a,b) => (b.truckIn?.getTime() || 0) - (a.truckIn?.getTime() || 0));
+        els.tableCount.textContent = `${formatNumber(rows.length)} data terfilter`;
+        els.emptyState.classList.toggle('hidden', rows.length > 0);
+        els.tableBody.innerHTML = rows.slice(0, 500).map((r, idx) => {
+          const valid = Number.isFinite(r.turntimeMinutes);
+          const status = !valid ? '<span class="badge badge-neutral">No Duration</span>' : r.turntimeMinutes <= target ? '<span class="badge badge-good">Within Target</span>' : '<span class="badge badge-bad">Over Target</span>';
+          return `<tr>
+            <td>${idx + 1}</td>
+            <td>${formatDateTime(r.truckIn)}</td>
+            <td>${formatDateTime(r.truckOut)}</td>
+            <td><strong>${formatMinutes(r.turntimeMinutes)}</strong></td>
+            <td>${escapeHtml(r.customer)}</td>
+            <td>${escapeHtml(r.movement)}</td>
+            <td>${escapeHtml(r.act)}</td>
+            <td>${escapeHtml(r.container)}</td>
+            <td>${escapeHtml(r.sourceSheet)}</td>
+            <td>${status}</td>
+          </tr>`;
+        }).join('');
+      }
+
+      function groupKey(item, group) {
+        if (group === 'customer') return item.customer || 'Unknown';
+        if (group === 'movement') return item.movement || 'Unknown';
+        if (group === 'act') {
+          const act = canonicalAct(item.act);
+          const actSelections = getSelectedValues(els.actFilter);
+          const combineEvac = (!isAllSelection(actSelections) && actSelections.length === 1 && actSelections[0] === 'EVAC_GROUP') || (isAllSelection(actSelections) && item.movement === 'Premium OUT');
+          return combineEvac && ['RP', 'OH', 'EVAC'].includes(act) ? 'EVAC_GROUP' : (act || 'Unknown');
+        }
+        if (!item.truckIn || isNaN(item.truckIn)) return null;
+        if (group === 'day') return toIsoDate(item.truckIn);
+        if (group === 'week') return getIsoWeekKey(item.truckIn);
+        if (group === 'month') return toIsoDate(item.truckIn).slice(0,7);
+        return 'Overall';
+      }
+
+      function getSelectedValues(select) {
+        return Array.from(select.selectedOptions || []).map(option => option.value);
+      }
+
+      function isAllSelection(values) {
+        return !values || !values.length || values.includes('ALL');
+      }
+
+      function matchesMultiSelection(value, selectedValues) {
+        return isAllSelection(selectedValues) || selectedValues.includes(value);
+      }
+
+      function setMultiOptions(select, values, selectedValues, allLabel, formatter = value => value) {
+        const current = Array.isArray(selectedValues) ? selectedValues.slice() : [];
+        const allSelected = isAllSelection(current);
+        select.innerHTML = `<option value="ALL">${escapeHtml(allLabel)}</option>` + values.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(formatter(value))}</option>`).join('');
+        const options = Array.from(select.options);
+        if (allSelected || !current.some(value => values.includes(value))) {
+          options.forEach(option => option.selected = option.value === 'ALL');
+        } else {
+          options.forEach(option => option.selected = current.includes(option.value));
+        }
+        renderCheckboxMultiSelect(select);
+      }
+
+      function getCheckboxMultiConfig(select) {
+        if (select === els.customerFilter) {
+          return { root: els.customerMulti, button: els.customerMultiButton, label: els.customerMultiLabel, panel: els.customerMultiPanel, search: els.customerMultiSearch, options: els.customerMultiOptions };
+        }
+        return { root: els.actMulti, button: els.actMultiButton, label: els.actMultiLabel, panel: els.actMultiPanel, search: els.actMultiSearch, options: els.actMultiOptions };
+      }
+
+      function setupCheckboxMultiSelect(select) {
+        const cfg = getCheckboxMultiConfig(select);
+        cfg.button.addEventListener('click', e => {
+          e.stopPropagation();
+          const willOpen = !cfg.panel.classList.contains('open');
+          closeAllCheckboxMultiSelects();
+          if (willOpen) {
+            cfg.panel.classList.add('open');
+            cfg.button.classList.add('open');
+            cfg.button.setAttribute('aria-expanded', 'true');
+            cfg.search.focus();
+          }
+        });
+        cfg.panel.addEventListener('click', e => e.stopPropagation());
+        cfg.search.addEventListener('input', () => filterCheckboxMultiOptions(select));
+      }
+
+      function closeAllCheckboxMultiSelects() {
+        [els.customerFilter, els.actFilter].forEach(select => {
+          const cfg = getCheckboxMultiConfig(select);
+          cfg.panel.classList.remove('open');
+          cfg.button.classList.remove('open');
+          cfg.button.setAttribute('aria-expanded', 'false');
+        });
+      }
+
+      function renderCheckboxMultiSelect(select) {
+        const cfg = getCheckboxMultiConfig(select);
+        if (!cfg || !cfg.options) return;
+        const options = Array.from(select.options);
+        cfg.options.innerHTML = options.map(option => `
+          <label class="check-option ${option.value === 'ALL' ? 'overall-option' : ''}" data-label="${escapeHtml(option.text.toLowerCase())}">
+            <input type="checkbox" data-value="${escapeHtml(option.value)}" ${option.selected ? 'checked' : ''} />
+            <span>${escapeHtml(option.text)}</span>
+          </label>`).join('');
+        cfg.options.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+          checkbox.addEventListener('change', () => {
+            const value = checkbox.dataset.value;
+            const option = options.find(item => item.value === value);
+            if (!option) return;
+            if (value === 'ALL' && checkbox.checked) {
+              options.forEach(item => item.selected = item.value === 'ALL');
+            } else {
+              option.selected = checkbox.checked;
+              const allOption = options.find(item => item.value === 'ALL');
+              if (allOption) allOption.selected = false;
+              const hasIndividual = options.some(item => item.value !== 'ALL' && item.selected);
+              if (!hasIndividual && allOption) allOption.selected = true;
+            }
+            renderCheckboxMultiSelect(select);
+            applyFilters();
+          });
+        });
+        updateCheckboxMultiLabel(select);
+        filterCheckboxMultiOptions(select);
+      }
+
+      function updateCheckboxMultiLabel(select) {
+        const cfg = getCheckboxMultiConfig(select);
+        const selected = Array.from(select.selectedOptions || []);
+        let text = selected.find(option => option.value === 'ALL')?.text || '';
+        const individuals = selected.filter(option => option.value !== 'ALL');
+        if (individuals.length === 1) text = individuals[0].text;
+        else if (individuals.length === 2) text = individuals.map(option => option.text).join(', ');
+        else if (individuals.length > 2) text = `${individuals.slice(0,2).map(option => option.text).join(', ')} +${individuals.length - 2}`;
+        cfg.label.textContent = text || 'Overall';
+        cfg.button.title = individuals.length ? individuals.map(option => option.text).join(', ') : text;
+      }
+
+      function filterCheckboxMultiOptions(select) {
+        const cfg = getCheckboxMultiConfig(select);
+        const keyword = cfg.search.value.trim().toLowerCase();
+        cfg.options.querySelectorAll('.check-option').forEach(label => {
+          const isOverall = label.classList.contains('overall-option');
+          label.style.display = !keyword || isOverall || label.dataset.label.includes(keyword) ? 'flex' : 'none';
+        });
+      }
+
+      function normalizeMultiSelect(select) {
+        const values = getSelectedValues(select);
+        const selectedNonAll = values.filter(value => value !== 'ALL');
+        if (!selectedNonAll.length) {
+          Array.from(select.options).forEach(option => option.selected = option.value === 'ALL');
+          return;
+        }
+        Array.from(select.options).forEach(option => {
+          if (option.value === 'ALL') option.selected = false;
+        });
+      }
+
+      function selectAllMulti(select) {
+        Array.from(select.options).forEach(option => option.selected = option.value !== 'ALL');
+        updateCheckboxMultiLabel(select);
+      }
+
+      function resetMultiToAll(select) {
+        Array.from(select.options).forEach(option => option.selected = option.value === 'ALL');
+        renderCheckboxMultiSelect(select);
+      }
+
+      function renderSummary() {
+        const container = els.summaryContainer;
+        if (!container) return;
+        const premiumRecords = state.filteredRecords.filter(item => ['Premium IN','Premium OUT'].includes(item.movement));
+        if (!premiumRecords.length) {
+          container.innerHTML = '<div class="summary-empty">Belum ada data premium untuk ditampilkan pada summary.</div>';
+          return;
+        }
+
+        const customerSelections = getSelectedValues(els.customerFilter);
+        const customers = !isAllSelection(customerSelections)
+          ? customerSelections.slice().sort((a,b) => a.localeCompare(b))
+          : [...new Set(premiumRecords.map(item => item.customer).filter(Boolean))].sort((a,b) => a.localeCompare(b));
+
+        const actSelections = getSelectedValues(els.actFilter);
+        const outboundActs = buildSummaryActList(premiumRecords, 'Premium OUT', ['EX','RP','OH','EVAC_GROUP'], actSelections);
+        const rowGroup = getSummaryRowGroup();
+        const rowMap = new Map();
+        for (const item of premiumRecords) {
+          const key = groupKey(item, rowGroup);
+          if (!key) continue;
+          if (!rowMap.has(key)) rowMap.set(key, []);
+          rowMap.get(key).push(item);
+        }
+        const rows = [...rowMap.entries()].sort((a,b) => a[0].localeCompare(b[0]));
+
+        let thead1 = `<tr><th class="stub-col" rowspan="3">${escapeHtml(summaryStubLabel(rowGroup))}</th><th class="section-title" colspan="${customers.length + 1}">Inbound Premium</th><th class="section-title" colspan="${calcSummaryColspan(customers, outboundActs)}">Outbound Premium</th></tr>`;
+        let thead2 = '<tr>';
+        customers.forEach(customer => { thead2 += `<th class="group-title" rowspan="2">${escapeHtml(customer)}</th>`; });
+        thead2 += '<th class="overall-col" rowspan="2">Overall</th>';
+        customers.forEach(customer => { thead2 += `<th class="group-title" colspan="${outboundActs.length + 1}">${escapeHtml(customer)}</th>`; });
+        thead2 += '<th class="overall-col" rowspan="2">Overall</th></tr>';
+        let thead3 = '<tr>';
+        customers.forEach(() => {
+          outboundActs.forEach(act => { thead3 += `<th>${escapeHtml(displayActLabel(act))}</th>`; });
+          thead3 += '<th class="overall-col">Overall</th>';
+        });
+        thead3 += '</tr>';
+
+        const body = rows.map(([rowKeyValue, items]) => {
+          const inItems = items.filter(item => item.movement === 'Premium IN');
+          const outItems = items.filter(item => item.movement === 'Premium OUT');
+          let row = `<tr><td class="stub-col">${escapeHtml(displayGroupKey(rowKeyValue, rowGroup))}</td>`;
+          customers.forEach(customer => {
+            const byCustomer = inItems.filter(item => item.customer === customer);
+            row += `<td>${formatSummaryValue(calcAvg(byCustomer))}</td>`;
+          });
+          row += `<td class="overall-col">${formatSummaryValue(calcAvg(inItems))}</td>`;
+          customers.forEach(customer => {
+            const byCustomer = outItems.filter(item => item.customer === customer);
+            outboundActs.forEach(act => row += `<td>${formatSummaryValue(calcActMetric(byCustomer, act))}</td>`);
+            row += `<td class="overall-col">${formatSummaryValue(calcAvg(byCustomer))}</td>`;
+          });
+          row += `<td class="overall-col">${formatSummaryValue(calcAvg(outItems))}</td></tr>`;
+          return row;
+        }).join('');
+
+        container.innerHTML = `<table class="summary-table"><thead>${thead1}${thead2}${thead3}</thead><tbody>${body}</tbody></table>`;
+      }
+
+      function getSummaryRowGroup() {
+        if (els.periodMode.value === 'week') return 'week';
+        if (els.periodMode.value === 'month') return 'month';
+        return 'day';
+      }
+
+      function summaryStubLabel(group) {
+        if (group === 'week') return 'Week';
+        if (group === 'month') return 'Month';
+        return 'Date';
+      }
+
+      function calcSummaryColspan(customers, acts) {
+        return (customers.length * (acts.length + 1)) + 1;
+      }
+
+      function buildSummaryActList(records, movement, preferredActs, selectedActs) {
+        const available = new Set(records.filter(item => item.movement === movement).map(item => canonicalAct(item.act)));
+        const filtered = preferredActs.filter(act => {
+          if (act === 'EVAC_GROUP') return available.has('RP') || available.has('OH') || available.has('EVAC');
+          return available.has(act);
+        });
+        if (isAllSelection(selectedActs)) return filtered;
+        const selectedFiltered = preferredActs.filter(act => selectedActs.includes(act) || (act === 'EVAC_GROUP' && selectedActs.includes('EVAC_GROUP')));
+        return selectedFiltered.length ? selectedFiltered : filtered;
+      }
+
+      function calcAvg(items) {
+        const values = items.map(item => item.turntimeMinutes).filter(Number.isFinite);
+        if (!values.length) return null;
+        return values.reduce((sum, value) => sum + value, 0) / values.length;
+      }
+
+      function calcActMetric(items, act) {
+        if (act === 'EVAC_GROUP') {
+          return calcAvg(items.filter(item => ['RP','OH','EVAC'].includes(canonicalAct(item.act))));
+        }
+        return calcAvg(items.filter(item => canonicalAct(item.act) === act));
+      }
+
+      function formatSummaryValue(value) {
+        return Number.isFinite(value) ? value.toFixed(1) : '0.0';
+      }
+
+      function displayGroupKey(key, group) {
+        if (group === 'day') {
+          const [y,m,d] = key.split('-').map(Number);
+          return new Date(y,m-1,d).toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' });
+        }
+        if (group === 'month') {
+          const [y,m] = key.split('-').map(Number);
+          return new Date(y,m-1,1).toLocaleDateString('id-ID', { month:'short', year:'numeric' });
+        }
+        if (group === 'act') return displayActLabel(key);
+        return key;
+      }
+
+      function percentile(sorted, p) {
+        if (!sorted.length) return null;
+        const index = (p / 100) * (sorted.length - 1);
+        const lower = Math.floor(index), upper = Math.ceil(index);
+        if (lower === upper) return sorted[lower];
+        return sorted[lower] + (sorted[upper] - sorted[lower]) * (index - lower);
+      }
+
+      function formatMinutes(value) { return Number.isFinite(value) ? `${value.toFixed(1)} min` : '—'; }
+      function formatNumber(value) { return Number(value || 0).toLocaleString('id-ID'); }
+      function formatChartValue(value, metric) { return metric === 'target' ? `${Number(value).toFixed(1)}%` : metric === 'avg' ? `${Number(value).toFixed(1)} min` : formatNumber(value); }
+      function formatDateTime(date) { return date && !isNaN(date) ? date.toLocaleString('id-ID', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '—'; }
+      function toIsoDate(date) {
+        const y = date.getFullYear(), m = String(date.getMonth()+1).padStart(2,'0'), d = String(date.getDate()).padStart(2,'0');
+        return `${y}-${m}-${d}`;
+      }
+      function getIsoWeekKey(date) {
+        const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+        const day = d.getUTCDay() || 7;
+        d.setUTCDate(d.getUTCDate() + 4 - day);
+        const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+        const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+        return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2,'0')}`;
+      }
+      function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch])); }
+
+      async function saveSheetsToCloud(sheetMap) {
+        if (!state.settings.scriptUrl) return;
+        showLoading('Menyimpan dan menggabungkan data ke Google Sheets…');
+        try {
+          const payload = {
+            action: 'append',
+            token: state.settings.apiToken,
+            spreadsheetId: SPREADSHEET_ID,
+            sheets: prepareSheetsForUpload(sheetMap)
+          };
+          await fetch(state.settings.scriptUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
+          });
+          updateConnectionStatus(true, 'Data dikirim ke Google Sheets');
+          showNotice('Data baru telah dikirim ke Google Sheets. Sistem backend akan melewati baris duplikat berdasarkan row key.', 'success');
+        } catch (error) {
+          console.error(error);
+          updateConnectionStatus(false, 'Gagal menyimpan');
+          showNotice(`Gagal mengirim data ke Google Sheets: ${error.message || error}`, 'error');
+        } finally { hideLoading(); }
+      }
+
+      function prepareSheetsForUpload(sheetMap) {
+        const result = {};
+        for (const [sheetName, rows] of Object.entries(sheetMap || {})) {
+          result[sheetName] = (rows || []).map(row => {
+            const cleaned = {};
+            for (const [key, value] of Object.entries(row)) cleaned[key] = serializeCell(value);
+            cleaned.__ROW_KEY = cleaned.__ROW_KEY || hashRow(sheetName, cleaned);
+            return cleaned;
+          });
+        }
+        return result;
+      }
+
+      function serializeCell(value) {
+        if (value instanceof Date && !isNaN(value)) return value.toISOString();
+        if (typeof value === 'number' && !Number.isFinite(value)) return '';
+        return value ?? '';
+      }
+
+      async function loadCloudData(showMessage) {
+        if (!state.settings.scriptUrl) {
+          openSettings();
+          return showNotice('Masukkan URL Google Apps Script terlebih dahulu.', 'info');
+        }
+        showLoading('Memuat data tersimpan dari Google Sheets…');
+        try {
+          const data = await jsonpRequest(state.settings.scriptUrl, {
+            action: 'load',
+            token: state.settings.apiToken,
+            spreadsheetId: SPREADSHEET_ID
+          });
+          if (!data || data.ok === false) throw new Error(data?.error || 'Respons backend tidak valid.');
+          mergeNormalizedSheets(data.sheets || {});
+          updateConnectionStatus(true);
+          if (showMessage) showNotice(`Data tersimpan berhasil dimuat. Total turntime: ${formatNumber(state.records.length)} transaksi; defect: ${formatNumber(state.defects.length)}.`, 'success');
+        } catch (error) {
+          console.error(error);
+          updateConnectionStatus(false, 'Koneksi gagal');
+          showNotice(`Tidak dapat memuat Google Sheets: ${error.message || error}`, 'error');
+        } finally { hideLoading(); }
+      }
+
+      function jsonpRequest(url, params, timeoutMs = 30000) {
+        return new Promise((resolve, reject) => {
+          const callback = `ttJsonp_${Date.now()}_${Math.floor(Math.random()*10000)}`;
+          const script = document.createElement('script');
+          const query = new URLSearchParams({ ...params, callback });
+          const cleanup = () => { delete window[callback]; script.remove(); clearTimeout(timer); };
+          window[callback] = data => { cleanup(); resolve(data); };
+          script.onerror = () => { cleanup(); reject(new Error('Web App tidak dapat diakses. Pastikan deployment menggunakan URL /exec.')); };
+          const timer = setTimeout(() => { cleanup(); reject(new Error('Koneksi timeout.')); }, timeoutMs);
+          script.src = `${url}${url.includes('?') ? '&' : '?'}${query.toString()}`;
+          document.body.appendChild(script);
+        });
+      }
+
+      function exportCsv() {
+        if (!state.filteredRecords.length) return showNotice('Tidak ada data untuk diekspor.', 'info');
+        const header = ['Truck IN','Truck OUT','Turntime Minutes','Customer','Movement','Act','Container','Source Sheet','Source File'];
+        const lines = [header, ...state.filteredRecords.map(r => [
+          r.truckIn ? r.truckIn.toISOString() : '', r.truckOut ? r.truckOut.toISOString() : '',
+          Number.isFinite(r.turntimeMinutes) ? r.turntimeMinutes.toFixed(2) : '', r.customer, r.movement, r.act, r.container, r.sourceSheet, r.sourceFile
+        ])].map(row => row.map(csvEscape).join(','));
+        const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `turntime_filtered_${new Date().toISOString().slice(0,10)}.csv`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+      }
+      function csvEscape(value) { const text = String(value ?? ''); return /[",\n]/.test(text) ? `"${text.replace(/"/g,'""')}"` : text; }
+
+      init();
+    })();
+  </script>
+</body>
+</html>
