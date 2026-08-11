@@ -369,7 +369,7 @@
     .table-actions { display: flex; align-items: center; gap: 9px; }
     .search-input { min-width: 220px; }
     .table-scroll { overflow: auto; max-height: 560px; }
-    table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 940px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; min-width: 1500px; }
     thead th { position: sticky; top: 0; z-index: 2; background: #eef3f8; color: #46546a; text-align: left; padding: 12px; font-size: 11px; text-transform: uppercase; letter-spacing: .35px; border-bottom: 1px solid var(--line); }
     tbody td { padding: 11px 12px; border-bottom: 1px solid #edf0f4; white-space: nowrap; }
     tbody tr:hover { background: #f8fbff; }
@@ -465,7 +465,7 @@
     <section class="hero">
       <div>
         <h2>Rekap Turntime Terpusat</h2>
-        <p>Upload satu file Excel dengan worksheet <strong>Prem IN, Prem OUT, Tps IN, Tps OUT,</strong> dan <strong>DEFECT</strong>. Data dapat digabungkan dengan periode sebelumnya, difilter berdasarkan Truck IN, dan dianalisis sampai customer serta Act.</p>
+        <p>Upload file turntime <strong>Prem IN, Prem OUT, Tps IN, Tps OUT, DEFECT</strong> dan file movement harian. Movement report digunakan untuk menambahkan <strong>Shipper / Consignee, Condition, Equipment, dan Grade</strong> berdasarkan event container yang paling sesuai.</p>
       </div>
       <div class="upload-box">
         <input id="fileInput" type="file" accept=".xlsx,.xls,.xlsm" multiple />
@@ -564,6 +564,23 @@
             <select id="actFilter" class="hidden" multiple aria-hidden="true" tabindex="-1"></select>
             <div class="mini-help">Centang EX, RP, OH sekaligus atau EVAC untuk gabungan RP + OH.</div>
           </div>
+          <div class="field">
+            <label for="partyFilter">Shipper / Consignee</label>
+            <select id="partyFilter" class="control"><option value="ALL">Overall Shipper / Consignee</option></select>
+          </div>
+          <div class="field">
+            <label for="conditionFilter">Condition</label>
+            <select id="conditionFilter" class="control"><option value="ALL">Overall Condition</option></select>
+          </div>
+          <div class="field">
+            <label for="equipmentFilter">Equipment</label>
+            <select id="equipmentFilter" class="control"><option value="ALL">Overall Equipment</option></select>
+          </div>
+          <div class="field">
+            <label for="gradeFilter">Grade</label>
+            <select id="gradeFilter" class="control"><option value="ALL">Overall Grade</option></select>
+            <div class="mini-help">MSL: M/S → PQC, A/B → K, C/E → Q. Grade lain tetap mengikuti data movement.</div>
+          </div>
         </div>
       </section>
 
@@ -597,6 +614,11 @@
                 <option value="customer">By Customer</option>
                 <option value="movement">By Movement</option>
                 <option value="act">By Act</option>
+                <option value="party">By Shipper / Consignee</option>
+                <option value="condition">By Condition</option>
+                <option value="equipment">By Equipment</option>
+                <option value="grade">By Grade</option>
+                <option value="combo">By Cond × Equipment × Grade</option>
               </select>
               <select id="chartType">
                 <option value="bar">Bar Chart</option>
@@ -664,6 +686,50 @@
         </article>
       </section>
 
+      <section class="comparison-grid">
+        <article class="panel chart-panel">
+          <div class="section-head">
+            <div>
+              <h3>Turntime by Equipment Type</h3>
+              <p>Perbandingan 20GP, 40GP, 40HU, 45HU, dan equipment lain. Filter Equipment diabaikan khusus pada grafik ini agar semua equipment tetap dapat dibandingkan.</p>
+            </div>
+            <div class="chart-controls">
+              <select id="equipmentChartMetric">
+                <option value="avg">Average Turntime</option>
+                <option value="volume">Transaction Volume</option>
+                <option value="target">Target Achievement</option>
+              </select>
+              <select id="equipmentChartType">
+                <option value="bar">Bar Chart</option>
+                <option value="line">Line Chart</option>
+              </select>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="equipmentChart"></canvas></div>
+        </article>
+
+        <article class="panel chart-panel">
+          <div class="section-head">
+            <div>
+              <h3>Turntime by Grade</h3>
+              <p>Perbandingan PQC, K, Q, dan grade lain. Filter Grade diabaikan khusus pada grafik ini agar seluruh grade tetap dapat dibandingkan.</p>
+            </div>
+            <div class="chart-controls">
+              <select id="gradeChartMetric">
+                <option value="avg">Average Turntime</option>
+                <option value="volume">Transaction Volume</option>
+                <option value="target">Target Achievement</option>
+              </select>
+              <select id="gradeChartType">
+                <option value="bar">Bar Chart</option>
+                <option value="line">Line Chart</option>
+              </select>
+            </div>
+          </div>
+          <div class="chart-wrap"><canvas id="gradeChart"></canvas></div>
+        </article>
+      </section>
+
       <section class="panel summary-panel">
         <div class="section-head">
           <div>
@@ -681,7 +747,7 @@
             <div id="tableCount" class="kpi-sub">0 data</div>
           </div>
           <div class="table-actions">
-            <input id="searchInput" class="control search-input" type="search" placeholder="Cari customer, container, act…" />
+            <input id="searchInput" class="control search-input" type="search" placeholder="Cari customer, container, shipper/consignee, grade…" />
             <button id="exportBtn" class="btn btn-ghost" type="button">Export CSV</button>
           </div>
         </div>
@@ -697,6 +763,11 @@
                 <th>Movement</th>
                 <th>Act</th>
                 <th>Container</th>
+                <th>Shipper / Consignee</th>
+                <th>Condition</th>
+                <th>Equipment</th>
+                <th>Grade</th>
+                <th>Raw Grade</th>
                 <th>Source Sheet</th>
                 <th>Status</th>
               </tr>
@@ -705,7 +776,7 @@
           </table>
           <div id="emptyState" class="empty-state">Belum ada data. Upload Excel atau muat data dari Google Sheets.</div>
         </div>
-        <div class="footnote">Tabel menampilkan maksimal 500 baris agar dashboard tetap ringan. Export CSV tetap memuat seluruh data yang sedang terfilter.</div>
+        <div class="footnote">Shipper / Consignee dan Grade berasal dari movement report yang dicocokkan per event container dan timestamp. Tabel menampilkan maksimal 500 baris; Export CSV tetap memuat seluruh data terfilter.</div>
       </section>
     </main>
   </div>
@@ -755,6 +826,7 @@
       const state = {
         records: [],
         defects: [],
+        movementEvents: [],
         uploadSheets: {},
         filteredRecords: [],
         filteredDefects: [],
@@ -762,9 +834,11 @@
         defectChart: null,
         premiumLadenChart: null,
         directionChart: null,
+        equipmentChart: null,
+        gradeChart: null,
         settings: {
-          scriptUrl: 'https://script.google.com/macros/s/AKfycbw96ZMcxYh3bH3HF1DbXIUA_qqz8N3WJtrPqpCnQCDjudaAMT3U00WjYkARN2mY-oF9kg/exec',
-          apiToken: 'SBS-TT-2026-7N4K9Q2M8R5X',
+          scriptUrl: '',
+          apiToken: '',
           targetMinutes: 60,
           autoSave: true
         }
@@ -781,6 +855,7 @@
         periodMode: el('periodMode'), dayField: el('dayField'), weekField: el('weekField'), monthField: el('monthField'), startField: el('startField'), endField: el('endField'),
         dayInput: el('dayInput'), weekInput: el('weekInput'), monthInput: el('monthInput'), startDateInput: el('startDateInput'), endDateInput: el('endDateInput'),
         customerFilter: el('customerFilter'), movementFilter: el('movementFilter'), actFilter: el('actFilter'), resetFiltersBtn: el('resetFiltersBtn'), searchInput: el('searchInput'),
+        partyFilter: el('partyFilter'), conditionFilter: el('conditionFilter'), equipmentFilter: el('equipmentFilter'), gradeFilter: el('gradeFilter'),
         customerSelectAllBtn: el('customerSelectAllBtn'), customerClearBtn: el('customerClearBtn'), actSelectAllBtn: el('actSelectAllBtn'), actClearBtn: el('actClearBtn'), summaryContainer: el('summaryContainer'),
         customerMulti: el('customerMulti'), customerMultiButton: el('customerMultiButton'), customerMultiLabel: el('customerMultiLabel'), customerMultiPanel: el('customerMultiPanel'), customerMultiSearch: el('customerMultiSearch'), customerMultiOptions: el('customerMultiOptions'),
         actMulti: el('actMulti'), actMultiButton: el('actMultiButton'), actMultiLabel: el('actMultiLabel'), actMultiPanel: el('actMultiPanel'), actMultiSearch: el('actMultiSearch'), actMultiOptions: el('actMultiOptions'),
@@ -788,6 +863,8 @@
         chartMetric: el('chartMetric'), chartGroup: el('chartGroup'), chartType: el('chartType'), mainChartCanvas: el('mainChart'), defectChartCanvas: el('defectChart'), movementDefectList: el('movementDefectList'),
         premiumLadenMetric: el('premiumLadenMetric'), premiumLadenType: el('premiumLadenType'), premiumLadenChartCanvas: el('premiumLadenChart'),
         directionMetric: el('directionMetric'), directionType: el('directionType'), directionChartCanvas: el('directionChart'),
+        equipmentChartMetric: el('equipmentChartMetric'), equipmentChartType: el('equipmentChartType'), equipmentChartCanvas: el('equipmentChart'),
+        gradeChartMetric: el('gradeChartMetric'), gradeChartType: el('gradeChartType'), gradeChartCanvas: el('gradeChart'),
         tableBody: el('tableBody'), tableCount: el('tableCount'), emptyState: el('emptyState'), exportBtn: el('exportBtn')
       };
 
@@ -815,7 +892,7 @@
         els.saveSettingsBtn.addEventListener('click', saveSettingsFromForm);
         els.testConnectionBtn.addEventListener('click', async () => { saveSettingsFromForm(false); await loadCloudData(true); });
         els.periodMode.addEventListener('change', () => { applyPeriodFieldVisibility(); applyFilters(); });
-        [els.dayInput, els.weekInput, els.monthInput, els.startDateInput, els.endDateInput, els.movementFilter]
+        [els.dayInput, els.weekInput, els.monthInput, els.startDateInput, els.endDateInput, els.movementFilter, els.partyFilter, els.conditionFilter, els.equipmentFilter, els.gradeFilter]
           .forEach(node => node.addEventListener('change', () => {
             if (node === els.movementFilter) updateActFilter();
             applyFilters();
@@ -831,6 +908,8 @@
         [els.chartMetric, els.chartGroup, els.chartType].forEach(node => node.addEventListener('change', renderMainChart));
         [els.premiumLadenMetric, els.premiumLadenType].forEach(node => node.addEventListener('change', renderPremiumLadenChart));
         [els.directionMetric, els.directionType].forEach(node => node.addEventListener('change', renderDirectionChart));
+        [els.equipmentChartMetric, els.equipmentChartType].forEach(node => node.addEventListener('change', renderEquipmentChart));
+        [els.gradeChartMetric, els.gradeChartType].forEach(node => node.addEventListener('change', renderGradeChart));
         els.exportBtn.addEventListener('click', exportCsv);
         document.addEventListener('click', e => {
           if (!e.target.closest('.check-multi')) closeAllCheckboxMultiSelects();
@@ -900,46 +979,70 @@
         showLoading(`Membaca ${files.length} file Excel…`);
         try {
           const collected = {};
-          const missingReports = [];
+          const movementEvents = [];
+          const warnings = [];
+          let tatFiles = 0;
+          let movementFiles = 0;
+
           for (const file of files) {
             const buffer = await file.arrayBuffer();
             const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
-            const missing = REQUIRED_SHEETS.filter(name => !findSheetName(workbook.SheetNames, name));
-            if (missing.length) missingReports.push(`${file.name}: ${missing.join(', ')}`);
+            const availableTatSheets = REQUIRED_SHEETS.filter(name => findSheetName(workbook.SheetNames, name));
+            let recognized = false;
 
-            for (const requiredName of REQUIRED_SHEETS) {
-              const actualName = findSheetName(workbook.SheetNames, requiredName);
-              if (!actualName) continue;
-              const worksheet = workbook.Sheets[actualName];
-              const rows = requiredName === 'DEFECT'
-                ? parseDefectWorksheet(worksheet)
-                : XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: true });
-              if (!collected[requiredName]) collected[requiredName] = [];
-              rows.forEach(row => collected[requiredName].push({
-                ...row,
-                __SOURCE_FILE: file.name,
-                __UPLOADED_AT: new Date().toISOString()
-              }));
+            if (availableTatSheets.length) {
+              recognized = true;
+              tatFiles++;
+              const missing = REQUIRED_SHEETS.filter(name => !findSheetName(workbook.SheetNames, name));
+              if (missing.length) warnings.push(`${file.name}: worksheet ${missing.join(', ')} tidak ditemukan.`);
+
+              for (const requiredName of REQUIRED_SHEETS) {
+                const actualName = findSheetName(workbook.SheetNames, requiredName);
+                if (!actualName) continue;
+                const worksheet = workbook.Sheets[actualName];
+                const rows = requiredName === 'DEFECT'
+                  ? parseDefectWorksheet(worksheet)
+                  : XLSX.utils.sheet_to_json(worksheet, { defval: '', raw: true });
+                if (!collected[requiredName]) collected[requiredName] = [];
+                rows.forEach(row => collected[requiredName].push({
+                  ...row,
+                  __SOURCE_FILE: file.name,
+                  __UPLOADED_AT: new Date().toISOString()
+                }));
+              }
             }
+
+            const parsedMovement = parseMovementReportWorkbook(workbook, file.name);
+            if (parsedMovement.length) {
+              recognized = true;
+              movementFiles++;
+              movementEvents.push(...parsedMovement);
+            }
+
+            if (!recognized) warnings.push(`${file.name}: format tidak dikenali sebagai file turntime maupun movement report.`);
           }
 
           state.uploadSheets = collected;
-          mergeNormalizedSheets(collected);
+          if (movementEvents.length) {
+            state.movementEvents = dedupeMovementEvents([...state.movementEvents, ...movementEvents]);
+          }
+          const enrichment = mergeNormalizedSheets(collected);
+
           const importedDefects = (collected.DEFECT || []).map(normalizeDefectRow).filter(Boolean);
           const defectsWithoutTruckIn = importedDefects.filter(row => !row.truckIn).length;
-          const dataQualityNote = defectsWithoutTruckIn
-            ? ` ${defectsWithoutTruckIn} defect tidak memiliki Truck IN dan hanya dihitung saat periode Overall.`
-            : '';
-
-          if (missingReports.length) {
-            showNotice(`Beberapa worksheet tidak ditemukan: ${missingReports.join(' | ')}. Worksheet yang tersedia tetap diproses.${dataQualityNote}`, 'info');
-          } else {
-            showNotice(`${files.length} file berhasil dibaca dan digabungkan ke dashboard.${dataQualityNote}`, 'success');
-          }
+          const notes = [];
+          if (tatFiles) notes.push(`${tatFiles} file turntime`);
+          if (movementFiles) notes.push(`${movementFiles} file movement (${formatNumber(movementEvents.length)} event)`);
+          if (enrichment.matchedCount) notes.push(`${formatNumber(enrichment.matchedCount)} transaksi berhasil dipasangkan dengan movement event`);
+          if (defectsWithoutTruckIn) notes.push(`${defectsWithoutTruckIn} defect tanpa Truck IN hanya dihitung pada Overall`);
+          if (warnings.length) notes.push(warnings.join(' | '));
+          showNotice(notes.length ? notes.join('. ') : 'File berhasil dibaca.', warnings.length ? 'info' : 'success');
 
           if (state.settings.autoSave && state.settings.scriptUrl) {
-            await saveSheetsToCloud(collected);
-          } else if (!state.settings.scriptUrl) {
+            const enrichedMap = buildSheetMapFromRecords(enrichment.matchedRecords);
+            const saveMap = mergeSheetMapsForSave(collected, enrichedMap);
+            if (Object.values(saveMap).some(rows => rows.length)) await saveSheetsToCloud(saveMap);
+          } else if (!state.settings.scriptUrl && (Object.keys(collected).length || enrichment.matchedCount)) {
             showNotice('Data sudah tampil, tetapi belum tersimpan permanen karena URL Google Apps Script belum diatur.', 'info');
           }
         } catch (error) {
@@ -949,6 +1052,216 @@
           els.fileInput.value = '';
           hideLoading();
         }
+      }
+
+      function parseMovementReportWorkbook(workbook, fileName) {
+        const events = [];
+        for (const sheetName of workbook.SheetNames || []) {
+          const worksheet = workbook.Sheets[sheetName];
+          const matrix = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: true, blankrows: true });
+          const headerIndex = matrix.findIndex(row => {
+            const headers = (row || []).map(normalizeHeader);
+            return headers.includes('CONTAINER') && headers.includes('CUSTOMERCODE') && (headers.includes('DTMIN') || headers.includes('DTMOUT'));
+          });
+          if (headerIndex < 0) continue;
+          const headers = matrix[headerIndex].map(value => cleanText(value));
+          const rows = matrix.slice(headerIndex + 1).map(cells => {
+            const row = {};
+            headers.forEach((header, index) => { if (header) row[header] = cells[index] ?? ''; });
+            return row;
+          }).filter(row => cleanText(getField(row, ['CONTAINER'])));
+          if (!rows.length) continue;
+          const movement = inferMovementReportType(fileName, headers, rows);
+          if (!movement) continue;
+          rows.forEach(row => {
+            const event = normalizeMovementEvent(row, movement, fileName);
+            if (event) events.push(event);
+          });
+        }
+        return events;
+      }
+
+      function inferMovementReportType(fileName, headers, rows) {
+        const fileKey = normalizeHeader(fileName);
+        if (fileKey.includes('PREMIN')) return 'Premium IN';
+        if (fileKey.includes('PREMOUT')) return 'Premium OUT';
+        if (fileKey.includes('TPSIN')) return 'TPS IN';
+        if (fileKey.includes('TPSOUT')) return 'TPS OUT';
+
+        const normalizedHeaders = headers.map(normalizeHeader);
+        const direction = normalizedHeaders.includes('DTMOUT') && !normalizedHeaders.includes('DTMIN') ? 'OUT'
+          : normalizedHeaders.includes('DTMIN') && !normalizedHeaders.includes('DTMOUT') ? 'IN'
+          : normalizedHeaders.includes('ACTOUT') ? 'OUT' : normalizedHeaders.includes('ACTIN') ? 'IN' : '';
+        if (!direction) return '';
+        const sampleActs = rows.slice(0, 100).map(row => canonicalAct(getField(row, direction === 'IN' ? ['ACT IN','ACT'] : ['ACT OUT','ACT'])));
+        const tps = sampleActs.some(act => act.includes('FULL') || act.includes('EMPTY'));
+        return `${tps ? 'TPS' : 'Premium'} ${direction}`;
+      }
+
+      function normalizeMovementEvent(raw, movement, sourceFile) {
+        const isInbound = movement.endsWith('IN');
+        const eventTime = parseDateValue(getField(raw, isInbound ? ['DTM IN','DTM_IN'] : ['DTM OUT','DTM_OUT']));
+        const container = cleanText(getField(raw, ['CONTAINER','CONT','CNTR']));
+        if (!container || !eventTime) return null;
+        const customer = cleanText(getField(raw, ['CUSTOMER CODE','CUSTOMER','CUST'])) || 'Unknown';
+        const act = canonicalAct(getField(raw, isInbound ? ['ACT IN','ACT'] : ['ACT OUT','ACT']));
+        const partyRole = isInbound ? 'Consignee' : 'Shipper';
+        const party = cleanText(getField(raw, isInbound ? ['CONSIGNEE'] : ['SHIPPER']));
+        const condition = cleanText(getField(raw, ['CONDITION (ORIGIN)','CONDITION','COND'])).toUpperCase();
+        const size = cleanText(getField(raw, ['SIZE','SZ']));
+        const type = cleanText(getField(raw, ['TYPE','TP']));
+        const equipment = normalizeEquipment(size, type);
+        const rawGrade = cleanText(getField(raw, ['GRADE'])).toUpperCase();
+        const grade = mapAnalysisGrade(customer, rawGrade);
+        const eventKey = hashRow(`MOV-${movement}`, { container, customer, act, eventTime: eventTime.toISOString(), party, rawGrade, sourceFile });
+        return { eventKey, movement, container, customer, act, eventTime, party, partyRole, condition, size, type, equipment, rawGrade, grade, sourceFile };
+      }
+
+      function dedupeMovementEvents(events) {
+        const map = new Map();
+        for (const event of events || []) if (event && event.eventKey) map.set(event.eventKey, event);
+        return [...map.values()];
+      }
+
+      function normalizeEquipment(sizeValue, typeValue) {
+        const size = cleanText(sizeValue).replace(/\.0$/, '').toUpperCase();
+        let type = cleanText(typeValue).toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const aliases = {
+          HQ: 'HU', HIGHCUBE: 'HU', HC: 'HU', HU: 'HU',
+          DRY: 'GP', DC: 'GP', DV: 'GP', GP: 'GP',
+          REEFER: 'RF', RF: 'RF', RH: 'RH',
+          TANK: 'TK', TK: 'TK', FR: 'FR', FLAT: 'FR', OT: 'OT'
+        };
+        type = aliases[type] || type;
+        return size && type ? `${size}${type}` : (size || type || 'Unknown');
+      }
+
+      function mapAnalysisGrade(customerCode, rawGradeValue) {
+        const customer = cleanText(customerCode).toUpperCase();
+        const raw = cleanText(rawGradeValue).toUpperCase();
+        if (!raw) return '';
+        if (customer === 'MSL') {
+          if (['M','S'].includes(raw)) return 'PQC';
+          if (['A','B'].includes(raw)) return 'K';
+          if (['C','E'].includes(raw)) return 'Q';
+        }
+        return raw;
+      }
+
+      function recordReferenceTime(record) {
+        return record.movement.endsWith('IN') ? record.truckIn : record.truckOut;
+      }
+
+      function enrichAllRecords() {
+        const eventsByKey = new Map();
+        for (const event of state.movementEvents || []) {
+          const key = `${event.movement}|${event.container.toUpperCase()}`;
+          if (!eventsByKey.has(key)) eventsByKey.set(key, []);
+          eventsByKey.get(key).push(event);
+        }
+        eventsByKey.forEach(events => events.sort((a,b) => a.eventTime - b.eventTime));
+
+        const recordsByKey = new Map();
+        for (const record of state.records) {
+          hydrateRecordEnrichment(record);
+          const key = `${record.movement}|${record.container.toUpperCase()}`;
+          if (!recordsByKey.has(key)) recordsByKey.set(key, []);
+          recordsByKey.get(key).push(record);
+        }
+
+        const matchedRecords = [];
+        recordsByKey.forEach((records, key) => {
+          const events = eventsByKey.get(key) || [];
+          if (!events.length) return;
+          const used = new Set();
+          records.sort((a,b) => (recordReferenceTime(a)?.getTime() || 0) - (recordReferenceTime(b)?.getTime() || 0));
+          for (const record of records) {
+            const ref = recordReferenceTime(record);
+            if (!ref) continue;
+            let best = null;
+            events.forEach((event, index) => {
+              if (used.has(index)) return;
+              const diffMinutes = Math.abs(event.eventTime - ref) / 60000;
+              const visitStart = record.truckIn ? new Date(record.truckIn.getTime() - 90 * 60000) : null;
+              const visitEnd = record.truckOut ? new Date(record.truckOut.getTime() + 90 * 60000) : null;
+              const withinVisit = visitStart && visitEnd && event.eventTime >= visitStart && event.eventTime <= visitEnd;
+              const customerPenalty = cleanText(record.customer).toUpperCase() === cleanText(event.customer).toUpperCase() ? 0 : 1440;
+              const actPenalty = canonicalAct(record.act) === canonicalAct(event.act) ? 0 : 360;
+              const score = diffMinutes + customerPenalty + actPenalty - (withinVisit ? 180 : 0);
+              if (!best || score < best.score) best = { event, index, diffMinutes, withinVisit, score };
+            });
+            if (!best || (!best.withinVisit && best.diffMinutes > 1440)) continue;
+            used.add(best.index);
+            applyMovementEventToRecord(record, best.event, best.diffMinutes);
+            matchedRecords.push(record);
+          }
+        });
+        return { matchedCount: matchedRecords.length, matchedRecords };
+      }
+
+      function hydrateRecordEnrichment(record) {
+        record.shipperConsignee = record.shipperConsignee || cleanText(getField(record.raw, ['SHIPPER / CONSIGNEE','SHIPPER/CONSIGNEE','CONSIGNEE','SHIPPER']));
+        record.partyRole = record.partyRole || cleanText(getField(record.raw, ['PARTY ROLE']));
+        record.condition = (record.condition || cleanText(getField(record.raw, ['MOVEMENT CONDITION','COND','CONDITION']))).toUpperCase();
+        record.size = record.size || cleanText(getField(record.raw, ['MOVEMENT SIZE','SZ','SIZE']));
+        record.type = record.type || cleanText(getField(record.raw, ['MOVEMENT TYPE','TP','TYPE']));
+        record.equipment = record.equipment || cleanText(getField(record.raw, ['EQUIPMENT'])) || normalizeEquipment(record.size, record.type);
+        record.rawGrade = (record.rawGrade || cleanText(getField(record.raw, ['RAW GRADE','GRADE']))).toUpperCase();
+        record.grade = (record.grade || cleanText(getField(record.raw, ['ANALYSIS GRADE'])) || mapAnalysisGrade(record.customer, record.rawGrade)).toUpperCase();
+        record.movementSourceFile = record.movementSourceFile || cleanText(getField(record.raw, ['MOVEMENT SOURCE FILE']));
+        record.movementEventTime = record.movementEventTime || parseDateValue(getField(record.raw, ['MOVEMENT EVENT TIME']));
+        const diffText = cleanText(getField(record.raw, ['MOVEMENT MATCH DIFF MINUTES']));
+        const diff = diffText === '' ? null : Number(diffText);
+        if (!Number.isFinite(record.movementMatchDiffMinutes) && Number.isFinite(diff)) record.movementMatchDiffMinutes = diff;
+      }
+
+      function applyMovementEventToRecord(record, event, diffMinutes) {
+        record.shipperConsignee = event.party || record.shipperConsignee || '';
+        record.partyRole = event.partyRole || record.partyRole || '';
+        record.condition = event.condition || record.condition || '';
+        record.size = event.size || record.size || '';
+        record.type = event.type || record.type || '';
+        record.equipment = event.equipment || record.equipment || normalizeEquipment(record.size, record.type);
+        record.rawGrade = event.rawGrade || record.rawGrade || '';
+        record.grade = event.grade || mapAnalysisGrade(record.customer, record.rawGrade) || record.grade || '';
+        record.movementSourceFile = event.sourceFile || '';
+        record.movementEventTime = event.eventTime;
+        record.movementMatchDiffMinutes = diffMinutes;
+
+        if (record.raw) {
+          record.raw['Shipper / Consignee'] = record.shipperConsignee;
+          record.raw['Party Role'] = record.partyRole;
+          record.raw['Movement Condition'] = record.condition;
+          record.raw['Movement Size'] = record.size;
+          record.raw['Movement Type'] = record.type;
+          record.raw['Equipment'] = record.equipment;
+          record.raw['Raw Grade'] = record.rawGrade;
+          record.raw['Analysis Grade'] = record.grade;
+          record.raw['Movement Event Time'] = event.eventTime.toISOString();
+          record.raw['Movement Match Diff Minutes'] = Number(diffMinutes.toFixed(2));
+          record.raw['Movement Source File'] = event.sourceFile;
+        }
+      }
+
+      function buildSheetMapFromRecords(records) {
+        const result = {};
+        for (const record of records || []) {
+          if (!REQUIRED_SHEETS.includes(record.sourceSheet) || !record.raw) continue;
+          if (!result[record.sourceSheet]) result[record.sourceSheet] = [];
+          result[record.sourceSheet].push(record.raw);
+        }
+        return result;
+      }
+
+      function mergeSheetMapsForSave(...maps) {
+        const result = {};
+        for (const map of maps) {
+          for (const [sheetName, rows] of Object.entries(map || {})) {
+            if (!result[sheetName]) result[sheetName] = [];
+            result[sheetName].push(...(rows || []));
+          }
+        }
+        return result;
       }
 
       function findSheetName(sheetNames, expected) {
@@ -1011,8 +1324,10 @@
         }
         state.records = dedupeByKey([...state.records, ...records]);
         state.defects = dedupeByKey([...state.defects, ...defects]);
+        const enrichment = enrichAllRecords();
         updateDynamicFilters();
         applyFilters();
+        return enrichment;
       }
 
       function normalizeTurntimeRow(raw, sheetName) {
@@ -1034,9 +1349,27 @@
         const container = cleanText(getField(raw, ['CONT', 'CONTAINER', 'CONTAINER NO', 'CONTAINER NUMBER', 'CONTAINER_NO', 'CNTR', 'CNTR NO', 'EQUIPMENT NO', 'EQUIPMENT NUMBER'])) || '-';
         const sourceFile = cleanText(raw.__SOURCE_FILE) || '-';
         const rowKey = cleanText(raw.__ROW_KEY) || hashRow(sheetName, raw);
+        const identityExtra = cleanText(getField(raw, ['CARD NO','DOCUMENT NO','NO']));
+        const businessKey = [sheetName, container.toUpperCase(), truckIn ? truckIn.toISOString() : '', truckOut ? truckOut.toISOString() : '', customer.toUpperCase(), act, identityExtra].join('|');
 
         if (!truckIn && turntime === null && customer === 'Unknown' && container === '-') return null;
-        return { rowKey, sourceSheet: sheetName, movement, act: act || 'Unknown', customer, container, truckIn, truckOut, turntimeMinutes: turntime, sourceFile, raw };
+        const record = {
+          rowKey, businessKey, sourceSheet: sheetName, movement, act: act || 'Unknown', customer, container,
+          truckIn, truckOut, turntimeMinutes: turntime, sourceFile, raw,
+          shipperConsignee: cleanText(getField(raw, ['SHIPPER / CONSIGNEE','SHIPPER/CONSIGNEE','CONSIGNEE','SHIPPER'])),
+          partyRole: cleanText(getField(raw, ['PARTY ROLE'])),
+          condition: cleanText(getField(raw, ['MOVEMENT CONDITION','COND','CONDITION'])).toUpperCase(),
+          size: cleanText(getField(raw, ['MOVEMENT SIZE','SZ','SIZE'])),
+          type: cleanText(getField(raw, ['MOVEMENT TYPE','TP','TYPE'])),
+          equipment: cleanText(getField(raw, ['EQUIPMENT'])),
+          rawGrade: cleanText(getField(raw, ['RAW GRADE','GRADE'])).toUpperCase(),
+          grade: cleanText(getField(raw, ['ANALYSIS GRADE'])).toUpperCase(),
+          movementSourceFile: cleanText(getField(raw, ['MOVEMENT SOURCE FILE'])),
+          movementEventTime: parseDateValue(getField(raw, ['MOVEMENT EVENT TIME'])),
+          movementMatchDiffMinutes: cleanText(getField(raw, ['MOVEMENT MATCH DIFF MINUTES'])) === '' ? null : Number(getField(raw, ['MOVEMENT MATCH DIFF MINUTES']))
+        };
+        hydrateRecordEnrichment(record);
+        return record;
       }
 
       function normalizeDefectRow(raw) {
@@ -1047,7 +1380,9 @@
         const customer = cleanText(getField(raw, ['CUSTOMER', 'CUSTOMER NAME', 'CUSTOMER_NAME', 'CUST', 'CLIENT', 'LINE', 'LINER'])) || 'Unknown';
         const container = cleanText(getField(raw, ['CONT', 'CONTAINER', 'CONTAINER NO', 'CONTAINER NUMBER', 'CONTAINER_NO', 'CNTR', 'CNTR NO', 'EQUIPMENT NO', 'EQUIPMENT NUMBER'])) || '-';
         const rowKey = cleanText(raw.__ROW_KEY) || hashRow('DEFECT', raw);
-        return { rowKey, sourceSheet: 'DEFECT', movement, act, customer, container, truckIn, raw };
+        const identityExtra = cleanText(getField(raw, ['NO','CARD NO','DOCUMENT NO']));
+        const businessKey = ['DEFECT', container.toUpperCase(), truckIn ? truckIn.toISOString() : '', customer.toUpperCase(), act, identityExtra].join('|');
+        return { rowKey, businessKey, sourceSheet: 'DEFECT', movement, act, customer, container, truckIn, raw };
       }
 
       function actAliasesForSheet(sheetName) {
@@ -1145,7 +1480,11 @@
 
       function dedupeByKey(items) {
         const map = new Map();
-        for (const item of items) if (item && item.rowKey) map.set(item.rowKey, item);
+        for (const item of items) {
+          if (!item) continue;
+          const key = item.businessKey || item.rowKey;
+          if (key) map.set(key, item);
+        }
         return [...map.values()];
       }
 
@@ -1154,6 +1493,17 @@
         const customers = [...new Set([...state.records.map(r => r.customer), ...state.defects.map(d => d.customer)].filter(Boolean))].sort((a,b) => a.localeCompare(b));
         setMultiOptions(els.customerFilter, customers, selectedCustomers, 'Overall Customer');
         updateActFilter();
+
+        setSingleOptions(els.partyFilter, [...new Set(state.records.map(r => r.shipperConsignee).filter(Boolean))].sort((a,b) => a.localeCompare(b)), els.partyFilter.value, 'Overall Shipper / Consignee');
+        setSingleOptions(els.conditionFilter, [...new Set(state.records.map(r => r.condition).filter(Boolean))].sort((a,b) => a.localeCompare(b)), els.conditionFilter.value, 'Overall Condition');
+        setSingleOptions(els.equipmentFilter, [...new Set(state.records.map(r => r.equipment).filter(Boolean))].sort((a,b) => a.localeCompare(b, undefined, { numeric: true })), els.equipmentFilter.value, 'Overall Equipment');
+        setSingleOptions(els.gradeFilter, [...new Set(state.records.map(r => r.grade).filter(Boolean))].sort((a,b) => a.localeCompare(b)), els.gradeFilter.value, 'Overall Grade');
+      }
+
+      function setSingleOptions(select, values, selected, allLabel) {
+        if (!select) return;
+        select.innerHTML = `<option value="ALL">${escapeHtml(allLabel)}</option>` + values.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('');
+        select.value = values.includes(selected) ? selected : 'ALL';
       }
 
       function updateActFilter() {
@@ -1206,6 +1556,10 @@
         els.movementFilter.value = 'ALL';
         updateActFilter();
         resetMultiToAll(els.actFilter);
+        els.partyFilter.value = 'ALL';
+        els.conditionFilter.value = 'ALL';
+        els.equipmentFilter.value = 'ALL';
+        els.gradeFilter.value = 'ALL';
         els.searchInput.value = '';
         applyPeriodFieldVisibility();
         applyFilters();
@@ -1215,21 +1569,34 @@
         const customers = getSelectedValues(els.customerFilter);
         const movement = els.movementFilter.value;
         const acts = getSelectedValues(els.actFilter);
+        const party = els.partyFilter.value;
+        const condition = els.conditionFilter.value;
+        const equipment = els.equipmentFilter.value;
+        const grade = els.gradeFilter.value;
         const search = els.searchInput.value.trim().toLowerCase();
 
-        const common = item => {
+        const commonBase = item => {
           if (!matchesPeriod(item.truckIn)) return false;
           if (!matchesMultiSelection(item.customer, customers)) return false;
           if (movement !== 'ALL' && item.movement !== movement) return false;
           if (!matchesActSelection(item.act, acts)) return false;
           return true;
         };
+        const commonRecord = item => {
+          if (!commonBase(item)) return false;
+          if (party !== 'ALL' && item.shipperConsignee !== party) return false;
+          if (condition !== 'ALL' && item.condition !== condition) return false;
+          if (equipment !== 'ALL' && item.equipment !== equipment) return false;
+          if (grade !== 'ALL' && item.grade !== grade) return false;
+          return true;
+        };
         state.filteredRecords = state.records.filter(item => {
-          if (!common(item)) return false;
+          if (!commonRecord(item)) return false;
           if (!search) return true;
-          return [item.customer, item.container, item.act, item.movement, item.sourceSheet, item.sourceFile].some(value => String(value).toLowerCase().includes(search));
+          return [item.customer, item.container, item.act, item.movement, item.sourceSheet, item.sourceFile, item.shipperConsignee, item.partyRole, item.condition, item.equipment, item.grade, item.rawGrade]
+            .some(value => String(value || '').toLowerCase().includes(search));
         });
-        state.filteredDefects = state.defects.filter(common);
+        state.filteredDefects = state.defects.filter(commonBase);
         renderAll();
       }
 
@@ -1256,6 +1623,8 @@
         renderDefectChart();
         renderPremiumLadenChart();
         renderDirectionChart();
+        renderEquipmentChart();
+        renderGradeChart();
         renderTable();
       }
 
@@ -1292,7 +1661,7 @@
         let entries = [...grouped.entries()];
         if (['day','week','month'].includes(group)) entries.sort((a,b) => a[0].localeCompare(b[0]));
         else entries.sort((a,b) => b[1].length - a[1].length);
-        if (['customer','act'].includes(group)) entries = entries.slice(0, 20);
+        if (['customer','act','party','condition','equipment','grade','combo'].includes(group)) entries = entries.slice(0, 25);
 
         const labels = entries.map(([key]) => displayGroupKey(key, group));
         const values = entries.map(([, items]) => {
@@ -1334,12 +1703,20 @@
       function getComparisonRecords() {
         const customers = getSelectedValues(els.customerFilter);
         const acts = getSelectedValues(els.actFilter);
+        const party = els.partyFilter.value;
+        const condition = els.conditionFilter.value;
+        const equipment = els.equipmentFilter.value;
+        const grade = els.gradeFilter.value;
         const search = els.searchInput.value.trim().toLowerCase();
         return state.records.filter(item => {
           if (!matchesPeriod(item.truckIn)) return false;
           if (!matchesMultiSelection(item.customer, customers)) return false;
           if (!matchesActSelection(item.act, acts)) return false;
-          if (search && ![item.customer, item.container, item.act, item.movement, item.sourceSheet, item.sourceFile].some(value => String(value).toLowerCase().includes(search))) return false;
+          if (party !== 'ALL' && item.shipperConsignee !== party) return false;
+          if (condition !== 'ALL' && item.condition !== condition) return false;
+          if (equipment !== 'ALL' && item.equipment !== equipment) return false;
+          if (grade !== 'ALL' && item.grade !== grade) return false;
+          if (search && ![item.customer, item.container, item.act, item.movement, item.sourceSheet, item.sourceFile, item.shipperConsignee, item.condition, item.equipment, item.grade].some(value => String(value || '').toLowerCase().includes(search))) return false;
           return true;
         });
       }
@@ -1418,6 +1795,109 @@
         );
       }
 
+      function getDimensionChartRecords(ignoreDimension) {
+        const customers = getSelectedValues(els.customerFilter);
+        const acts = getSelectedValues(els.actFilter);
+        const movement = els.movementFilter.value;
+        const party = els.partyFilter.value;
+        const condition = els.conditionFilter.value;
+        const equipment = els.equipmentFilter.value;
+        const grade = els.gradeFilter.value;
+        const search = els.searchInput.value.trim().toLowerCase();
+        return state.records.filter(item => {
+          if (!matchesPeriod(item.truckIn)) return false;
+          if (!matchesMultiSelection(item.customer, customers)) return false;
+          if (movement !== 'ALL' && item.movement !== movement) return false;
+          if (!matchesActSelection(item.act, acts)) return false;
+          if (party !== 'ALL' && item.shipperConsignee !== party) return false;
+          if (condition !== 'ALL' && item.condition !== condition) return false;
+          if (ignoreDimension !== 'equipment' && equipment !== 'ALL' && item.equipment !== equipment) return false;
+          if (ignoreDimension !== 'grade' && grade !== 'ALL' && item.grade !== grade) return false;
+          if (search && ![item.customer, item.container, item.act, item.movement, item.sourceSheet, item.sourceFile, item.shipperConsignee, item.condition, item.equipment, item.grade]
+            .some(value => String(value || '').toLowerCase().includes(search))) return false;
+          return true;
+        });
+      }
+
+      function renderDimensionChart(canvas, chartKey, dimension, metric, type) {
+        if (!window.Chart || !canvas) return;
+        const source = getDimensionChartRecords(dimension);
+        const groups = new Map();
+        source.forEach(item => {
+          const key = cleanText(item[dimension]) || 'Unknown';
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(item);
+        });
+
+        let entries = [...groups.entries()];
+        if (dimension === 'equipment') {
+          entries.sort((a,b) => a[0].localeCompare(b[0], undefined, { numeric: true, sensitivity: 'base' }));
+        } else {
+          const preferred = ['PQC','K','Q'];
+          entries.sort((a,b) => {
+            const ai = preferred.indexOf(a[0]), bi = preferred.indexOf(b[0]);
+            if (ai !== -1 || bi !== -1) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+            return a[0].localeCompare(b[0]);
+          });
+        }
+
+        const labels = entries.map(([key]) => key);
+        const values = entries.map(([, items]) => calculateComparisonMetric(items, metric));
+        const labelMap = { avg: 'Average Turntime (Minutes)', volume: 'Transaction Volume', target: 'Target Achievement (%)' };
+        const datasets = [{ label: labelMap[metric], data: values, borderWidth: 2, tension: .28, fill: false }];
+        if (metric === 'avg' && labels.length) {
+          datasets.push({ label: `Target ${state.settings.targetMinutes} Minutes`, data: labels.map(() => state.settings.targetMinutes), type: 'line', borderDash: [7,5], pointRadius: 0, borderWidth: 2 });
+        }
+
+        if (state[chartKey]) state[chartKey].destroy();
+        state[chartKey] = new Chart(canvas, {
+          type,
+          data: { labels, datasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+              legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 18 } },
+              tooltip: {
+                callbacks: {
+                  label: ctx => `${ctx.dataset.label}: ${formatChartValue(ctx.raw, metric)}`,
+                  afterLabel: ctx => {
+                    if (ctx.datasetIndex !== 0) return '';
+                    const items = entries[ctx.dataIndex]?.[1] || [];
+                    return `Transactions: ${formatNumber(items.length)}`;
+                  }
+                }
+              }
+            },
+            scales: {
+              x: { grid: { display: false }, ticks: { maxRotation: 45, minRotation: 0 } },
+              y: { beginAtZero: true, grid: { color: 'rgba(120,135,155,.15)' }, ticks: { callback: value => metric === 'target' ? `${value}%` : value } }
+            }
+          }
+        });
+      }
+
+      function renderEquipmentChart() {
+        renderDimensionChart(
+          els.equipmentChartCanvas,
+          'equipmentChart',
+          'equipment',
+          els.equipmentChartMetric.value,
+          els.equipmentChartType.value
+        );
+      }
+
+      function renderGradeChart() {
+        renderDimensionChart(
+          els.gradeChartCanvas,
+          'gradeChart',
+          'grade',
+          els.gradeChartMetric.value,
+          els.gradeChartType.value
+        );
+      }
+
       function renderDefectChart() {
         if (!window.Chart) return;
         const counts = MOVEMENTS.map(m => state.filteredDefects.filter(d => d.movement === m).length);
@@ -1438,6 +1918,7 @@
         els.tableBody.innerHTML = rows.slice(0, 500).map((r, idx) => {
           const valid = Number.isFinite(r.turntimeMinutes);
           const status = !valid ? '<span class="badge badge-neutral">No Duration</span>' : r.turntimeMinutes <= target ? '<span class="badge badge-good">Within Target</span>' : '<span class="badge badge-bad">Over Target</span>';
+          const party = r.shipperConsignee ? `${escapeHtml(r.shipperConsignee)}${r.partyRole ? `<br><span class="kpi-sub">${escapeHtml(r.partyRole)}</span>` : ''}` : '—';
           return `<tr>
             <td>${idx + 1}</td>
             <td>${formatDateTime(r.truckIn)}</td>
@@ -1447,6 +1928,11 @@
             <td>${escapeHtml(r.movement)}</td>
             <td>${escapeHtml(r.act)}</td>
             <td>${escapeHtml(r.container)}</td>
+            <td>${party}</td>
+            <td>${escapeHtml(r.condition || '—')}</td>
+            <td>${escapeHtml(r.equipment || '—')}</td>
+            <td><strong>${escapeHtml(r.grade || '—')}</strong></td>
+            <td>${escapeHtml(r.rawGrade || '—')}</td>
             <td>${escapeHtml(r.sourceSheet)}</td>
             <td>${status}</td>
           </tr>`;
@@ -1456,6 +1942,11 @@
       function groupKey(item, group) {
         if (group === 'customer') return item.customer || 'Unknown';
         if (group === 'movement') return item.movement || 'Unknown';
+        if (group === 'party') return item.shipperConsignee || 'Unknown';
+        if (group === 'condition') return item.condition || 'Unknown';
+        if (group === 'equipment') return item.equipment || 'Unknown';
+        if (group === 'grade') return item.grade || 'Unknown';
+        if (group === 'combo') return `${item.condition || 'Unknown'} • ${item.equipment || 'Unknown'} • ${item.grade || 'Unknown'}`;
         if (group === 'act') {
           const act = canonicalAct(item.act);
           const actSelections = getSelectedValues(els.actFilter);
@@ -1745,27 +2236,62 @@
       function escapeHtml(value) { return String(value ?? '').replace(/[&<>'"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[ch])); }
 
       async function saveSheetsToCloud(sheetMap) {
-        if (!state.settings.scriptUrl) return;
-        showLoading('Menyimpan dan menggabungkan data ke Google Sheets…');
+        const scriptUrl = String(state.settings.scriptUrl || '').trim();
+        const apiToken = String(state.settings.apiToken || '').trim();
+        if (!scriptUrl) {
+          updateConnectionStatus(false, 'Belum terhubung');
+          openSettings();
+          return showNotice('Data belum tersimpan. Masukkan URL Web App Google Apps Script yang berakhiran /exec.', 'error');
+        }
+        if (!/\/exec(?:\?|$)/.test(scriptUrl)) {
+          updateConnectionStatus(false, 'URL tidak valid');
+          openSettings();
+          return showNotice('URL Google Apps Script harus menggunakan URL deployment yang berakhiran /exec, bukan URL editor.', 'error');
+        }
+        if (!apiToken) {
+          updateConnectionStatus(false, 'Token belum diisi');
+          openSettings();
+          return showNotice('Data belum tersimpan. Isi API Token yang sama persis dengan API_TOKEN pada Code.gs.', 'error');
+        }
+
+        showLoading('Memeriksa koneksi dan API token…');
         try {
+          const ping = await jsonpRequest(scriptUrl, {
+            action: 'ping',
+            token: apiToken,
+            spreadsheetId: SPREADSHEET_ID
+          });
+          if (!ping || ping.ok === false) throw new Error(ping?.error || 'Backend tidak memberikan respons valid.');
+
+          showLoading('Menyimpan dan menggabungkan data ke Google Sheets…');
           const payload = {
-            action: 'append',
-            token: state.settings.apiToken,
+            action: 'upsert',
+            token: apiToken,
             spreadsheetId: SPREADSHEET_ID,
             sheets: prepareSheetsForUpload(sheetMap)
           };
-          await fetch(state.settings.scriptUrl, {
+          await fetch(scriptUrl, {
             method: 'POST',
             mode: 'no-cors',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify(payload)
           });
-          updateConnectionStatus(true, 'Data dikirim ke Google Sheets');
-          showNotice('Data baru telah dikirim ke Google Sheets. Sistem backend akan melewati baris duplikat berdasarkan row key.', 'success');
+
+          showLoading('Memverifikasi data tersimpan…');
+          const verification = await jsonpRequest(scriptUrl, {
+            action: 'load',
+            token: apiToken,
+            spreadsheetId: SPREADSHEET_ID
+          }, 60000);
+          if (!verification || verification.ok === false) throw new Error(verification?.error || 'Data tidak dapat diverifikasi setelah dikirim.');
+          mergeNormalizedSheets(verification.sheets || {});
+          updateConnectionStatus(true, 'Google Sheets terhubung');
+          showNotice('Data berhasil dikirim dan koneksi Google Sheets sudah diverifikasi. Data lama dengan movement yang sama akan diperbarui, bukan diduplikasi.', 'success');
         } catch (error) {
           console.error(error);
-          updateConnectionStatus(false, 'Gagal menyimpan');
-          showNotice(`Gagal mengirim data ke Google Sheets: ${error.message || error}`, 'error');
+          updateConnectionStatus(false, 'Koneksi / token gagal');
+          showNotice(`Data belum tersimpan: ${error.message || error}`, 'error');
+          openSettings();
         } finally { hideLoading(); }
       }
 
@@ -1827,10 +2353,13 @@
 
       function exportCsv() {
         if (!state.filteredRecords.length) return showNotice('Tidak ada data untuk diekspor.', 'info');
-        const header = ['Truck IN','Truck OUT','Turntime Minutes','Customer','Movement','Act','Container','Source Sheet','Source File'];
+        const header = ['Truck IN','Truck OUT','Turntime Minutes','Customer','Movement','Act','Container','Shipper / Consignee','Party Role','Condition','Equipment','Grade','Raw Grade','Movement Event Time','Match Diff Minutes','Source Sheet','Source File','Movement Source File'];
         const lines = [header, ...state.filteredRecords.map(r => [
           r.truckIn ? r.truckIn.toISOString() : '', r.truckOut ? r.truckOut.toISOString() : '',
-          Number.isFinite(r.turntimeMinutes) ? r.turntimeMinutes.toFixed(2) : '', r.customer, r.movement, r.act, r.container, r.sourceSheet, r.sourceFile
+          Number.isFinite(r.turntimeMinutes) ? r.turntimeMinutes.toFixed(2) : '', r.customer, r.movement, r.act, r.container,
+          r.shipperConsignee || '', r.partyRole || '', r.condition || '', r.equipment || '', r.grade || '', r.rawGrade || '',
+          r.movementEventTime ? r.movementEventTime.toISOString() : '', Number.isFinite(r.movementMatchDiffMinutes) ? r.movementMatchDiffMinutes.toFixed(2) : '',
+          r.sourceSheet, r.sourceFile, r.movementSourceFile || ''
         ])].map(row => row.map(csvEscape).join(','));
         const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
         const link = document.createElement('a');
@@ -1839,6 +2368,7 @@
         link.click();
         URL.revokeObjectURL(link.href);
       }
+
       function csvEscape(value) { const text = String(value ?? ''); return /[",\n]/.test(text) ? `"${text.replace(/"/g,'""')}"` : text; }
 
       init();
