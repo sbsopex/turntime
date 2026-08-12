@@ -7,7 +7,6 @@
   <meta name="description" content="Dashboard rekap turntime Premium dan Laden/TPS dengan filter periodik, customer, movement, act, grafik kustom, serta penyimpanan Google Sheets." />
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-  <script src="./config.js"></script>
   <style>
     :root {
       --navy: #0b1f3a;
@@ -843,7 +842,7 @@
       const MOVEMENTS = ['Premium IN', 'Premium OUT', 'TPS IN', 'TPS OUT'];
       const SPREADSHEET_ID = '1L6w5NxZci10IidsOj8rXvK8JYpSHE1_py84n3avZBCY';
       const SETTINGS_KEY = 'turntimeDashboardSettingsV1';
-      const DEFAULT_SCRIPT_URL = String((window.TURNTIME_CONFIG && window.TURNTIME_CONFIG.scriptUrl) || '').trim();
+      const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw96ZMcxYh3bH3HF1DbXIUA_qqz8N3WJtrPqpCnQCDjudaAMT3U00WjYkARN2mY-oF9kg/exec'; // GANTI SEKALI DENGAN URL WEB APP /exec
       const HAS_DEFAULT_SCRIPT_URL = /\/exec(?:\?|$)/.test(DEFAULT_SCRIPT_URL);
 
       const state = {
@@ -955,15 +954,15 @@
           const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
           state.settings = { ...state.settings, ...saved };
         } catch (_) {}
-        // config.js is the central connection source for every device.
-        // When configured, it always overrides browser-local settings.
+        // DEFAULT_SCRIPT_URL di index.html adalah sumber koneksi pusat untuk semua perangkat.
+        // Jika sudah diisi URL /exec, nilai ini selalu mengalahkan setting lokal browser.
         if (HAS_DEFAULT_SCRIPT_URL) state.settings.scriptUrl = DEFAULT_SCRIPT_URL;
       }
 
       function syncSettingsForm() {
         els.scriptUrlInput.value = state.settings.scriptUrl || '';
         els.scriptUrlInput.readOnly = HAS_DEFAULT_SCRIPT_URL;
-        els.scriptUrlInput.title = HAS_DEFAULT_SCRIPT_URL ? 'URL dikunci dari config.js agar semua perangkat menggunakan koneksi yang sama.' : '';
+        els.scriptUrlInput.title = HAS_DEFAULT_SCRIPT_URL ? 'URL dikunci langsung dari index.html agar semua perangkat menggunakan koneksi yang sama.' : '';
         els.targetInput.value = state.settings.targetMinutes || 60;
         els.autoSaveInput.checked = state.settings.autoSave !== false;
         els.targetSub.textContent = `Target ≤ ${Number(state.settings.targetMinutes || 60)} menit`;
@@ -977,7 +976,7 @@
         syncSettingsForm();
         updateConnectionStatus(false);
         applyFilters();
-        showNotice(HAS_DEFAULT_SCRIPT_URL ? 'Pengaturan tersimpan. URL Google Sheets dikelola terpusat melalui config.js.' : 'Pengaturan dashboard berhasil disimpan pada browser ini.', 'success');
+        showNotice(HAS_DEFAULT_SCRIPT_URL ? 'Pengaturan tersimpan. URL Google Sheets dikelola terpusat langsung di index.html.' : 'Pengaturan dashboard berhasil disimpan pada browser ini.', 'success');
         if (close) closeSettings();
       }
 
@@ -2420,7 +2419,7 @@
       async function loadCloudData(showMessage) {
         if (!state.settings.scriptUrl) {
           openSettings();
-          return showNotice('URL Google Apps Script belum dikonfigurasi. Isi scriptUrl pada config.js dengan URL Web App /exec.', 'info');
+          return showNotice('URL Google Apps Script belum dikonfigurasi. Isi DEFAULT_SCRIPT_URL di index.html dengan URL Web App /exec.', 'info');
         }
         showLoading('Memuat data tersimpan dari Google Sheets…');
         try {
