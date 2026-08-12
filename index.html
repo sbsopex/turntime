@@ -501,12 +501,14 @@
           <div class="field">
             <label for="periodMode">Periode</label>
             <select id="periodMode" class="control">
-              <option value="all">Semua Periode</option>
+              <option value="recent7" selected>7 Hari Terakhir</option>
               <option value="day">Per Day</option>
               <option value="week">Per Week</option>
               <option value="month">Per Month</option>
               <option value="range">Custom Range</option>
+              <option value="all">Semua Periode</option>
             </select>
+            <div class="mini-help">Default memuat 7 hari terakhir agar dashboard lebih cepat. Periode lain dimuat saat dipilih.</div>
           </div>
           <div id="dayField" class="field hidden">
             <label for="dayInput">Tanggal</label>
@@ -858,6 +860,7 @@
         directionChart: null,
         equipmentChart: null,
         gradeChart: null,
+        cloudLoadSignature: '',
         settings: {
           scriptUrl: HAS_DEFAULT_SCRIPT_URL ? DEFAULT_SCRIPT_URL : '',
           targetMinutes: 60,
@@ -901,20 +904,28 @@
         if (!window.XLSX || !window.Chart) {
           showNotice('Library Excel atau grafik gagal dimuat. Pastikan perangkat terhubung ke internet lalu refresh halaman.', 'error');
         }
-        if (state.settings.scriptUrl) loadCloudData(false);
+        if (state.settings.scriptUrl) reloadCloudForSelectedPeriod(false, true);
       }
 
       function bindEvents() {
         els.uploadBtn.addEventListener('click', () => els.fileInput.click());
         els.fileInput.addEventListener('change', handleFiles);
-        els.reloadCloudBtn.addEventListener('click', () => loadCloudData(true));
+        els.reloadCloudBtn.addEventListener('click', () => reloadCloudForSelectedPeriod(true, true));
         els.settingsBtn.addEventListener('click', openSettings);
         els.closeSettingsBtn.addEventListener('click', closeSettings);
         els.settingsModal.addEventListener('click', e => { if (e.target === els.settingsModal) closeSettings(); });
         els.saveSettingsBtn.addEventListener('click', saveSettingsFromForm);
-        els.testConnectionBtn.addEventListener('click', async () => { saveSettingsFromForm(false); await loadCloudData(true); });
-        els.periodMode.addEventListener('change', () => { applyPeriodFieldVisibility(); applyFilters(); });
-        [els.dayInput, els.weekInput, els.monthInput, els.startDateInput, els.endDateInput, els.movementFilter, els.conditionFilter, els.equipmentFilter, els.gradeFilter]
+        els.testConnectionBtn.addEventListener('click', async () => { saveSettingsFromForm(false); await reloadCloudForSelectedPeriod(true, true); });
+        els.periodMode.addEventListener('change', async () => {
+          applyPeriodFieldVisibility();
+          setDefaultPeriodInputForMode();
+          await reloadCloudForSelectedPeriod(false);
+        });
+        [els.dayInput, els.weekInput, els.monthInput, els.startDateInput, els.endDateInput]
+          .forEach(node => node.addEventListener('change', async () => {
+            await reloadCloudForSelectedPeriod(false);
+          }));
+        [els.movementFilter, els.conditionFilter, els.equipmentFilter, els.gradeFilter]
           .forEach(node => node.addEventListener('change', () => {
             if (node === els.movementFilter) updateActFilter();
             applyFilters();
@@ -1567,6 +1578,87 @@
         });
       }
 
+      function getRecent7Range() {
+        const end = new Date();
+        end.setHours(12,0,0,0);
+        const start = new Date(end);
+        start.setDate(start.getDate() - 6);
+        return { from: toIsoDate(start), to: toIsoDate(end), label: '7 hari terakhir' };
+      }
+
+      function isoWeekToRange(weekValue) {
+        const match = String(weekValue || '').match(/^(\d{4})-W(\d{2})$/);
+        if (!match) return null;
+        const year = Number(match[1]);
+        const week = Number(match[2]);
+        const jan4 = new Date(Date.UTC(year, 0, 4, 12, 0, 0));
+        const jan4Day = jan4.getUTCDay() || 7;
+        const monday = new Date(jan4);
+        monday.setUTCDate(jan4.getUTCDate() - jan4Day + 1 + (week - 1) * 7);
+        const sunday = new Date(monday);
+        sunday.setUTCDate(monday.getUTCDate() + 6);
+        const fmt = d => `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+        return { from: fmt(monday), to: fmt(sunday), label: weekValue };
+      }
+
+      function getCloudRangeForCurrentPeriod() {
+        const mode = els.periodMode.value;
+        if (mode === 'all') return { all: true, complete: true, label: 'semua periode' };
+        if (mode === 'recent7') return { ...getRecent7Range(), complete: true };
+        if (mode === 'day') {
+          const value = els.dayInput.value;
+          return value ? { from: value, to: value, complete: true, label: value } : { complete: false };
+        }
+        if (mode === 'week') {
+          const range = isoWeekToRange(els.weekInput.value);
+          return range ? { ...range, complete: true } : { complete: false };
+        }
+        if (mode === 'month') {
+          const value = els.monthInput.value;
+          if (!/^\d{4}-\d{2}$/.test(value)) return { complete: false };
+          const [year, month] = value.split('-').map(Number);
+          const lastDay = new Date(year, month, 0).getDate();
+          return { from: `${value}-01`, to: `${value}-${String(lastDay).padStart(2,'0')}`, complete: true, label: value };
+        }
+        if (mode === 'range') {
+          const from = els.startDateInput.value;
+          const to = els.endDateInput.value;
+          if (!from || !to) return { complete: false };
+          return { from: from <= to ? from : to, to: from <= to ? to : from, complete: true, label: `${from} s/d ${to}` };
+        }
+        return { complete: false };
+      }
+
+      function setDefaultPeriodInputForMode() {
+        const mode = els.periodMode.value;
+        const recent = getRecent7Range();
+        if (mode === 'day' && !els.dayInput.value) els.dayInput.value = recent.to;
+        if (mode === 'week' && !els.weekInput.value) els.weekInput.value = getIsoWeekKey(new Date());
+        if (mode === 'month' && !els.monthInput.value) els.monthInput.value = recent.to.slice(0,7);
+        if (mode === 'range') {
+          if (!els.startDateInput.value) els.startDateInput.value = recent.from;
+          if (!els.endDateInput.value) els.endDateInput.value = recent.to;
+        }
+      }
+
+      async function reloadCloudForSelectedPeriod(showMessage, force = false) {
+        const range = getCloudRangeForCurrentPeriod();
+        if (!range.complete) {
+          applyFilters();
+          return;
+        }
+        const signature = range.all ? 'ALL' : `${range.from}|${range.to}`;
+        if (!force && signature === state.cloudLoadSignature) {
+          applyFilters();
+          return;
+        }
+        if (!state.settings.scriptUrl) {
+          applyFilters();
+          return;
+        }
+        await loadCloudData(showMessage, range, force);
+      }
+
       function applyPeriodFieldVisibility() {
         const mode = els.periodMode.value;
         els.dayField.classList.toggle('hidden', mode !== 'day');
@@ -1576,8 +1668,8 @@
         els.endField.classList.toggle('hidden', mode !== 'range');
       }
 
-      function resetFilters() {
-        els.periodMode.value = 'all';
+      async function resetFilters() {
+        els.periodMode.value = 'recent7';
         els.dayInput.value = '';
         els.weekInput.value = '';
         els.monthInput.value = '';
@@ -1594,7 +1686,7 @@
         els.gradeFilter.value = 'ALL';
         els.searchInput.value = '';
         applyPeriodFieldVisibility();
-        applyFilters();
+        await reloadCloudForSelectedPeriod(false);
       }
 
       function applyFilters() {
@@ -1637,6 +1729,10 @@
         if (mode === 'all') return true;
         if (!date || isNaN(date)) return false;
         const isoDate = toIsoDate(date);
+        if (mode === 'recent7') {
+          const range = getRecent7Range();
+          return isoDate >= range.from && isoDate <= range.to;
+        }
         if (mode === 'day') return !els.dayInput.value || isoDate === els.dayInput.value;
         if (mode === 'month') return !els.monthInput.value || isoDate.slice(0,7) === els.monthInput.value;
         if (mode === 'week') return !els.weekInput.value || getIsoWeekKey(date) === els.weekInput.value;
@@ -2415,14 +2511,22 @@
         return value ?? '';
       }
 
-      async function loadCloudData(showMessage) {
+      async function loadCloudData(showMessage, requestedRange = null, force = false) {
         const scriptUrl = String(state.settings.scriptUrl || '').trim();
         if (!scriptUrl) {
           openSettings();
           return showNotice('URL Google Apps Script belum dikonfigurasi. Isi DEFAULT_SCRIPT_URL di index.html dengan URL Web App /exec.', 'info');
         }
+        const range = requestedRange && requestedRange.complete ? requestedRange : getCloudRangeForCurrentPeriod();
+        if (!range.complete) return;
+        const signature = range.all ? 'ALL' : `${range.from}|${range.to}`;
+        if (!force && state.cloudLoadSignature === signature) {
+          applyFilters();
+          return;
+        }
+
         updateConnectionStatus(false, 'Connecting...');
-        showLoading('Menghubungkan ke Google Sheets…');
+        showLoading(range.all ? 'Menghubungkan dan menyiapkan seluruh histori…' : `Memuat data ${range.from} s/d ${range.to}…`);
         try {
           const ping = await jsonpRequest(scriptUrl, {
             action: 'ping',
@@ -2430,16 +2534,22 @@
           }, 20000);
           if (!ping || ping.ok === false) throw new Error(ping?.error || 'Backend tidak memberikan respons ping yang valid.');
 
-          const manifest = await jsonpRequest(scriptUrl, {
-            action: 'manifest',
+          const manifestAction = range.all ? 'manifest' : 'rangemanifest';
+          const manifestParams = {
+            action: manifestAction,
             spreadsheetId: SPREADSHEET_ID
-          }, 30000);
+          };
+          if (!range.all) {
+            manifestParams.from = range.from;
+            manifestParams.to = range.to;
+          }
+          const manifest = await jsonpRequest(scriptUrl, manifestParams, 45000);
           if (!manifest || manifest.ok === false) throw new Error(manifest?.error || 'Manifest data tidak dapat dimuat.');
 
           const sheets = {};
-          const chunkSize = 2500;
+          const chunkSize = 2000;
           const entries = Array.isArray(manifest.sheets) ? manifest.sheets : [];
-          let totalRows = entries.reduce((sum, item) => sum + Number(item.rowCount || 0), 0);
+          const totalRows = entries.reduce((sum, item) => sum + Number(item.rowCount || 0), 0);
           let loadedRows = 0;
 
           for (const info of entries) {
@@ -2454,13 +2564,18 @@
               let lastError = null;
               for (let attempt = 1; attempt <= 3; attempt++) {
                 try {
-                  chunk = await jsonpRequest(scriptUrl, {
-                    action: 'loadchunk',
+                  const params = {
+                    action: range.all ? 'loadchunk' : 'loadrangechunk',
                     sheet: sheetName,
                     start: String(start),
                     limit: String(chunkSize),
                     spreadsheetId: SPREADSHEET_ID
-                  }, 60000);
+                  };
+                  if (!range.all) {
+                    params.from = range.from;
+                    params.to = range.to;
+                  }
+                  chunk = await jsonpRequest(scriptUrl, params, 60000);
                   if (!chunk || chunk.ok === false) throw new Error(chunk?.error || 'Chunk tidak valid.');
                   break;
                 } catch (error) {
@@ -2475,9 +2590,14 @@
             }
           }
 
+          // Ganti dataset aktif dengan periode yang baru diminta agar browser tidak menumpuk seluruh histori.
+          state.records = [];
+          state.defects = [];
           mergeNormalizedSheets(sheets);
+          state.cloudLoadSignature = signature;
           updateConnectionStatus(true, 'Google Sheets terhubung');
-          if (showMessage) showNotice(`Data tersimpan berhasil dimuat. Total turntime: ${formatNumber(state.records.length)} transaksi; defect: ${formatNumber(state.defects.length)}.`, 'success');
+          const periodText = range.all ? 'semua periode' : `${range.from} s/d ${range.to}`;
+          if (showMessage) showNotice(`Data ${periodText} berhasil dimuat. Turntime: ${formatNumber(state.records.length)} transaksi; defect: ${formatNumber(state.defects.length)}.`, 'success');
         } catch (error) {
           console.error(error);
           updateConnectionStatus(false, 'Koneksi gagal');
