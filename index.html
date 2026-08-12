@@ -7,6 +7,7 @@
   <meta name="description" content="Dashboard rekap turntime Premium dan Laden/TPS dengan filter periodik, customer, movement, act, grafik kustom, serta penyimpanan Google Sheets." />
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <script src="./config.js"></script>
   <style>
     :root {
       --navy: #0b1f3a;
@@ -232,6 +233,18 @@
       color: var(--ink);
     }
     .check-option:hover { background: #f2f7ff; }
+    .check-option.single-option {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      text-align: left;
+      font: inherit;
+    }
+    .check-option.single-option.selected {
+      background: #eaf2ff;
+      color: #0f62d8;
+      font-weight: 750;
+    }
     .check-option input {
       width: 16px;
       height: 16px;
@@ -565,8 +578,19 @@
             <div class="mini-help">Centang EX, RP, OH sekaligus atau EVAC untuk gabungan RP + OH.</div>
           </div>
           <div class="field">
-            <label for="partyFilter">Shipper / Consignee</label>
-            <select id="partyFilter" class="control"><option value="ALL">Overall Shipper / Consignee</option></select>
+            <label for="partyMultiButton">Shipper / Consignee</label>
+            <div id="partyMulti" class="check-multi">
+              <button id="partyMultiButton" class="control check-multi-trigger" type="button" aria-expanded="false">
+                <span id="partyMultiLabel" class="check-multi-trigger-text">Overall Shipper / Consignee</span>
+                <span class="check-multi-arrow">▾</span>
+              </button>
+              <div id="partyMultiPanel" class="check-multi-panel">
+                <input id="partyMultiSearch" class="control check-multi-search" type="search" placeholder="Cari Shipper / Consignee…" autocomplete="off" />
+                <div id="partyMultiOptions" class="check-multi-options"></div>
+              </div>
+            </div>
+            <select id="partyFilter" class="hidden" aria-hidden="true" tabindex="-1"><option value="ALL">Overall Shipper / Consignee</option></select>
+            <div class="mini-help">Klik dropdown lalu ketik nama Shipper / Consignee untuk mencari.</div>
           </div>
           <div class="field">
             <label for="conditionFilter">Condition</label>
@@ -792,10 +816,7 @@
           <label for="scriptUrlInput">Google Apps Script Web App URL</label>
           <input id="scriptUrlInput" class="control" type="url" placeholder="https://script.google.com/macros/s/AKfycbw96ZMcxYh3bH3HF1DbXIUA_qqz8N3WJtrPqpCnQCDjudaAMT3U00WjYkARN2mY-oF9kg/exec" />
           <div class="help">Tempel URL <strong>/exec</strong> setelah file <strong>Code.gs</strong> di-deploy sebagai Web App.</div>
-        </div>
-        <div class="field">
-          <label for="apiTokenInput">API Token</label>
-          <input id="apiTokenInput" class="control" type="password" placeholder="Samakan dengan API_TOKEN pada Code.gs" />
+          <div class="help">Versi ini tidak menggunakan API token. Deploy Web App dengan akses <strong>Anyone</strong> dan jangan membagikan URL /exec di luar pihak yang membutuhkan.</div>
         </div>
         <div class="field">
           <label for="targetInput">Target Turntime (menit)</label>
@@ -822,6 +843,8 @@
       const MOVEMENTS = ['Premium IN', 'Premium OUT', 'TPS IN', 'TPS OUT'];
       const SPREADSHEET_ID = '1L6w5NxZci10IidsOj8rXvK8JYpSHE1_py84n3avZBCY';
       const SETTINGS_KEY = 'turntimeDashboardSettingsV1';
+      const DEFAULT_SCRIPT_URL = String((window.TURNTIME_CONFIG && window.TURNTIME_CONFIG.scriptUrl) || '').trim();
+      const HAS_DEFAULT_SCRIPT_URL = /\/exec(?:\?|$)/.test(DEFAULT_SCRIPT_URL);
 
       const state = {
         records: [],
@@ -837,8 +860,7 @@
         equipmentChart: null,
         gradeChart: null,
         settings: {
-          scriptUrl: '',
-          apiToken: '',
+          scriptUrl: HAS_DEFAULT_SCRIPT_URL ? DEFAULT_SCRIPT_URL : '',
           targetMinutes: 60,
           autoSave: true
         }
@@ -848,7 +870,7 @@
       const els = {
         fileInput: el('fileInput'), uploadBtn: el('uploadBtn'), reloadCloudBtn: el('reloadCloudBtn'),
         settingsBtn: el('settingsBtn'), settingsModal: el('settingsModal'), closeSettingsBtn: el('closeSettingsBtn'),
-        scriptUrlInput: el('scriptUrlInput'), apiTokenInput: el('apiTokenInput'), targetInput: el('targetInput'), autoSaveInput: el('autoSaveInput'),
+        scriptUrlInput: el('scriptUrlInput'), targetInput: el('targetInput'), autoSaveInput: el('autoSaveInput'),
         saveSettingsBtn: el('saveSettingsBtn'), testConnectionBtn: el('testConnectionBtn'),
         cloudDot: el('cloudDot'), cloudStatusText: el('cloudStatusText'), notice: el('notice'),
         loading: el('loading'), loadingText: el('loadingText'),
@@ -856,6 +878,7 @@
         dayInput: el('dayInput'), weekInput: el('weekInput'), monthInput: el('monthInput'), startDateInput: el('startDateInput'), endDateInput: el('endDateInput'),
         customerFilter: el('customerFilter'), movementFilter: el('movementFilter'), actFilter: el('actFilter'), resetFiltersBtn: el('resetFiltersBtn'), searchInput: el('searchInput'),
         partyFilter: el('partyFilter'), conditionFilter: el('conditionFilter'), equipmentFilter: el('equipmentFilter'), gradeFilter: el('gradeFilter'),
+        partyMulti: el('partyMulti'), partyMultiButton: el('partyMultiButton'), partyMultiLabel: el('partyMultiLabel'), partyMultiPanel: el('partyMultiPanel'), partyMultiSearch: el('partyMultiSearch'), partyMultiOptions: el('partyMultiOptions'),
         customerSelectAllBtn: el('customerSelectAllBtn'), customerClearBtn: el('customerClearBtn'), actSelectAllBtn: el('actSelectAllBtn'), actClearBtn: el('actClearBtn'), summaryContainer: el('summaryContainer'),
         customerMulti: el('customerMulti'), customerMultiButton: el('customerMultiButton'), customerMultiLabel: el('customerMultiLabel'), customerMultiPanel: el('customerMultiPanel'), customerMultiSearch: el('customerMultiSearch'), customerMultiOptions: el('customerMultiOptions'),
         actMulti: el('actMulti'), actMultiButton: el('actMultiButton'), actMultiLabel: el('actMultiLabel'), actMultiPanel: el('actMultiPanel'), actMultiSearch: el('actMultiSearch'), actMultiOptions: el('actMultiOptions'),
@@ -872,7 +895,7 @@
         loadSettings();
         bindEvents();
         syncSettingsForm();
-        updateConnectionStatus(false);
+        updateConnectionStatus(false, state.settings.scriptUrl ? 'Connecting...' : 'Belum terhubung');
         applyPeriodFieldVisibility();
         updateDynamicFilters();
         applyFilters();
@@ -892,13 +915,14 @@
         els.saveSettingsBtn.addEventListener('click', saveSettingsFromForm);
         els.testConnectionBtn.addEventListener('click', async () => { saveSettingsFromForm(false); await loadCloudData(true); });
         els.periodMode.addEventListener('change', () => { applyPeriodFieldVisibility(); applyFilters(); });
-        [els.dayInput, els.weekInput, els.monthInput, els.startDateInput, els.endDateInput, els.movementFilter, els.partyFilter, els.conditionFilter, els.equipmentFilter, els.gradeFilter]
+        [els.dayInput, els.weekInput, els.monthInput, els.startDateInput, els.endDateInput, els.movementFilter, els.conditionFilter, els.equipmentFilter, els.gradeFilter]
           .forEach(node => node.addEventListener('change', () => {
             if (node === els.movementFilter) updateActFilter();
             applyFilters();
           }));
         setupCheckboxMultiSelect(els.customerFilter);
         setupCheckboxMultiSelect(els.actFilter);
+        setupPartySearchSelect();
         els.customerSelectAllBtn.addEventListener('click', e => { e.stopPropagation(); selectAllMulti(els.customerFilter); renderCheckboxMultiSelect(els.customerFilter); applyFilters(); });
         els.customerClearBtn.addEventListener('click', e => { e.stopPropagation(); resetMultiToAll(els.customerFilter); renderCheckboxMultiSelect(els.customerFilter); applyFilters(); });
         els.actSelectAllBtn.addEventListener('click', e => { e.stopPropagation(); selectAllMulti(els.actFilter); renderCheckboxMultiSelect(els.actFilter); applyFilters(); });
@@ -912,7 +936,11 @@
         [els.gradeChartMetric, els.gradeChartType].forEach(node => node.addEventListener('change', renderGradeChart));
         els.exportBtn.addEventListener('click', exportCsv);
         document.addEventListener('click', e => {
-          if (!e.target.closest('.check-multi')) closeAllCheckboxMultiSelects();
+          if (!e.target.closest('.check-multi')) {
+            closeAllCheckboxMultiSelects();
+            closePartySearchSelect();
+            closePartySearchSelect();
+          }
         });
         document.addEventListener('keydown', e => {
           if (e.key === 'Escape') {
@@ -927,26 +955,29 @@
           const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
           state.settings = { ...state.settings, ...saved };
         } catch (_) {}
+        // config.js is the central connection source for every device.
+        // When configured, it always overrides browser-local settings.
+        if (HAS_DEFAULT_SCRIPT_URL) state.settings.scriptUrl = DEFAULT_SCRIPT_URL;
       }
 
       function syncSettingsForm() {
         els.scriptUrlInput.value = state.settings.scriptUrl || '';
-        els.apiTokenInput.value = state.settings.apiToken || '';
+        els.scriptUrlInput.readOnly = HAS_DEFAULT_SCRIPT_URL;
+        els.scriptUrlInput.title = HAS_DEFAULT_SCRIPT_URL ? 'URL dikunci dari config.js agar semua perangkat menggunakan koneksi yang sama.' : '';
         els.targetInput.value = state.settings.targetMinutes || 60;
         els.autoSaveInput.checked = state.settings.autoSave !== false;
         els.targetSub.textContent = `Target ≤ ${Number(state.settings.targetMinutes || 60)} menit`;
       }
 
       function saveSettingsFromForm(close = true) {
-        state.settings.scriptUrl = els.scriptUrlInput.value.trim();
-        state.settings.apiToken = els.apiTokenInput.value.trim();
+        state.settings.scriptUrl = HAS_DEFAULT_SCRIPT_URL ? DEFAULT_SCRIPT_URL : els.scriptUrlInput.value.trim();
         state.settings.targetMinutes = Math.max(1, Number(els.targetInput.value || 60));
         state.settings.autoSave = els.autoSaveInput.checked;
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
         syncSettingsForm();
         updateConnectionStatus(false);
         applyFilters();
-        showNotice('Pengaturan dashboard berhasil disimpan pada browser ini.', 'success');
+        showNotice(HAS_DEFAULT_SCRIPT_URL ? 'Pengaturan tersimpan. URL Google Sheets dikelola terpusat melalui config.js.' : 'Pengaturan dashboard berhasil disimpan pada browser ini.', 'success');
         if (close) closeSettings();
       }
 
@@ -1495,6 +1526,7 @@
         updateActFilter();
 
         setSingleOptions(els.partyFilter, [...new Set(state.records.map(r => r.shipperConsignee).filter(Boolean))].sort((a,b) => a.localeCompare(b)), els.partyFilter.value, 'Overall Shipper / Consignee');
+        renderPartySearchSelect();
         setSingleOptions(els.conditionFilter, [...new Set(state.records.map(r => r.condition).filter(Boolean))].sort((a,b) => a.localeCompare(b)), els.conditionFilter.value, 'Overall Condition');
         setSingleOptions(els.equipmentFilter, [...new Set(state.records.map(r => r.equipment).filter(Boolean))].sort((a,b) => a.localeCompare(b, undefined, { numeric: true })), els.equipmentFilter.value, 'Overall Equipment');
         setSingleOptions(els.gradeFilter, [...new Set(state.records.map(r => r.grade).filter(Boolean))].sort((a,b) => a.localeCompare(b)), els.gradeFilter.value, 'Overall Grade');
@@ -1557,6 +1589,7 @@
         updateActFilter();
         resetMultiToAll(els.actFilter);
         els.partyFilter.value = 'ALL';
+        renderPartySearchSelect();
         els.conditionFilter.value = 'ALL';
         els.equipmentFilter.value = 'ALL';
         els.gradeFilter.value = 'ALL';
@@ -1985,6 +2018,86 @@
         renderCheckboxMultiSelect(select);
       }
 
+      function setupPartySearchSelect() {
+        if (!els.partyMultiButton || !els.partyMultiPanel) return;
+        els.partyMultiButton.addEventListener('click', e => {
+          e.stopPropagation();
+          const willOpen = !els.partyMultiPanel.classList.contains('open');
+          closeAllCheckboxMultiSelects();
+          if (willOpen) {
+            els.partyMultiPanel.classList.add('open');
+            els.partyMultiButton.classList.add('open');
+            els.partyMultiButton.setAttribute('aria-expanded', 'true');
+            els.partyMultiSearch.value = '';
+            filterPartySearchOptions();
+            setTimeout(() => els.partyMultiSearch.focus(), 0);
+          } else {
+            closePartySearchSelect();
+          }
+        });
+        els.partyMultiPanel.addEventListener('click', e => e.stopPropagation());
+        els.partyMultiSearch.addEventListener('input', filterPartySearchOptions);
+      }
+
+      function closePartySearchSelect() {
+        if (!els.partyMultiPanel) return;
+        els.partyMultiPanel.classList.remove('open');
+        els.partyMultiButton.classList.remove('open');
+        els.partyMultiButton.setAttribute('aria-expanded', 'false');
+      }
+
+      function renderPartySearchSelect() {
+        if (!els.partyFilter || !els.partyMultiOptions) return;
+        const options = Array.from(els.partyFilter.options);
+        els.partyMultiOptions.innerHTML = options.map(option => `
+          <button type="button" class="check-option single-option ${option.value === els.partyFilter.value ? 'selected' : ''}" data-value="${escapeHtml(option.value)}" data-label="${escapeHtml(option.text.toLowerCase())}">
+            <span>${escapeHtml(option.text)}</span>
+          </button>`).join('');
+        els.partyMultiOptions.querySelectorAll('.single-option').forEach(button => {
+          button.addEventListener('click', () => {
+            els.partyFilter.value = button.dataset.value;
+            updatePartySearchLabel();
+            closePartySearchSelect();
+            renderPartySearchSelect();
+            applyFilters();
+          });
+        });
+        updatePartySearchLabel();
+        filterPartySearchOptions();
+      }
+
+      function updatePartySearchLabel() {
+        const option = els.partyFilter.options[els.partyFilter.selectedIndex];
+        const text = option ? option.text : 'Overall Shipper / Consignee';
+        els.partyMultiLabel.textContent = text;
+        els.partyMultiButton.title = text;
+      }
+
+      function filterPartySearchOptions() {
+        if (!els.partyMultiOptions) return;
+        const keyword = (els.partyMultiSearch?.value || '').trim().toLowerCase();
+        let visible = 0;
+        els.partyMultiOptions.querySelectorAll('.single-option').forEach(button => {
+          const isOverall = button.dataset.value === 'ALL';
+          const match = !keyword || isOverall || (button.dataset.label || '').includes(keyword);
+          button.style.display = match ? 'flex' : 'none';
+          if (match && !isOverall) visible++;
+        });
+        let empty = els.partyMultiOptions.querySelector('.party-search-empty');
+        if (!visible && keyword) {
+          if (!empty) {
+            empty = document.createElement('div');
+            empty.className = 'party-search-empty';
+            empty.style.cssText = 'padding:12px 8px;color:#667085;font-size:12px;text-align:center;';
+            empty.textContent = 'Nama tidak ditemukan';
+            els.partyMultiOptions.appendChild(empty);
+          }
+          empty.style.display = 'block';
+        } else if (empty) {
+          empty.style.display = 'none';
+        }
+      }
+
       function getCheckboxMultiConfig(select) {
         if (select === els.customerFilter) {
           return { root: els.customerMulti, button: els.customerMultiButton, label: els.customerMultiLabel, panel: els.customerMultiPanel, search: els.customerMultiSearch, options: els.customerMultiOptions };
@@ -2237,7 +2350,6 @@
 
       async function saveSheetsToCloud(sheetMap) {
         const scriptUrl = String(state.settings.scriptUrl || '').trim();
-        const apiToken = String(state.settings.apiToken || '').trim();
         if (!scriptUrl) {
           updateConnectionStatus(false, 'Belum terhubung');
           openSettings();
@@ -2248,17 +2360,10 @@
           openSettings();
           return showNotice('URL Google Apps Script harus menggunakan URL deployment yang berakhiran /exec, bukan URL editor.', 'error');
         }
-        if (!apiToken) {
-          updateConnectionStatus(false, 'Token belum diisi');
-          openSettings();
-          return showNotice('Data belum tersimpan. Isi API Token yang sama persis dengan API_TOKEN pada Code.gs.', 'error');
-        }
-
-        showLoading('Memeriksa koneksi dan API token…');
+        showLoading('Memeriksa koneksi Google Sheets…');
         try {
           const ping = await jsonpRequest(scriptUrl, {
             action: 'ping',
-            token: apiToken,
             spreadsheetId: SPREADSHEET_ID
           });
           if (!ping || ping.ok === false) throw new Error(ping?.error || 'Backend tidak memberikan respons valid.');
@@ -2266,7 +2371,6 @@
           showLoading('Menyimpan dan menggabungkan data ke Google Sheets…');
           const payload = {
             action: 'upsert',
-            token: apiToken,
             spreadsheetId: SPREADSHEET_ID,
             sheets: prepareSheetsForUpload(sheetMap)
           };
@@ -2280,7 +2384,6 @@
           showLoading('Memverifikasi data tersimpan…');
           const verification = await jsonpRequest(scriptUrl, {
             action: 'load',
-            token: apiToken,
             spreadsheetId: SPREADSHEET_ID
           }, 60000);
           if (!verification || verification.ok === false) throw new Error(verification?.error || 'Data tidak dapat diverifikasi setelah dikirim.');
@@ -2289,7 +2392,7 @@
           showNotice('Data berhasil dikirim dan koneksi Google Sheets sudah diverifikasi. Data lama dengan movement yang sama akan diperbarui, bukan diduplikasi.', 'success');
         } catch (error) {
           console.error(error);
-          updateConnectionStatus(false, 'Koneksi / token gagal');
+          updateConnectionStatus(false, 'Koneksi gagal');
           showNotice(`Data belum tersimpan: ${error.message || error}`, 'error');
           openSettings();
         } finally { hideLoading(); }
@@ -2317,13 +2420,12 @@
       async function loadCloudData(showMessage) {
         if (!state.settings.scriptUrl) {
           openSettings();
-          return showNotice('Masukkan URL Google Apps Script terlebih dahulu.', 'info');
+          return showNotice('URL Google Apps Script belum dikonfigurasi. Isi scriptUrl pada config.js dengan URL Web App /exec.', 'info');
         }
         showLoading('Memuat data tersimpan dari Google Sheets…');
         try {
           const data = await jsonpRequest(state.settings.scriptUrl, {
             action: 'load',
-            token: state.settings.apiToken,
             spreadsheetId: SPREADSHEET_ID
           });
           if (!data || data.ok === false) throw new Error(data?.error || 'Respons backend tidak valid.');
