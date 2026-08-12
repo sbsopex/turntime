@@ -842,7 +842,7 @@
       const MOVEMENTS = ['Premium IN', 'Premium OUT', 'TPS IN', 'TPS OUT'];
       const SPREADSHEET_ID = '1L6w5NxZci10IidsOj8rXvK8JYpSHE1_py84n3avZBCY';
       const SETTINGS_KEY = 'turntimeDashboardSettingsV1';
-      const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw96ZMcxYh3bH3HF1DbXIUA_qqz8N3WJtrPqpCnQCDjudaAMT3U00WjYkARN2mY-oF9kg/exec'; // GANTI SEKALI DENGAN URL WEB APP /exec
+      const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbw96ZMcxYh3bH3HF1DbXIUA_qqz8N3WJtrPqpCnQCDjudaAMT3U00WjYkARN2mY-oF9kg/exec'; // koneksi pusat semua perangkat
       const HAS_DEFAULT_SCRIPT_URL = /\/exec(?:\?|$)/.test(DEFAULT_SCRIPT_URL);
 
       const state = {
@@ -2382,11 +2382,10 @@
 
           showLoading('Memverifikasi data tersimpan…');
           const verification = await jsonpRequest(scriptUrl, {
-            action: 'load',
+            action: 'manifest',
             spreadsheetId: SPREADSHEET_ID
-          }, 60000);
+          }, 30000);
           if (!verification || verification.ok === false) throw new Error(verification?.error || 'Data tidak dapat diverifikasi setelah dikirim.');
-          mergeNormalizedSheets(verification.sheets || {});
           updateConnectionStatus(true, 'Google Sheets terhubung');
           showNotice('Data berhasil dikirim dan koneksi Google Sheets sudah diverifikasi. Data lama dengan movement yang sama akan diperbarui, bukan diduplikasi.', 'success');
         } catch (error) {
@@ -2417,19 +2416,67 @@
       }
 
       async function loadCloudData(showMessage) {
-        if (!state.settings.scriptUrl) {
+        const scriptUrl = String(state.settings.scriptUrl || '').trim();
+        if (!scriptUrl) {
           openSettings();
           return showNotice('URL Google Apps Script belum dikonfigurasi. Isi DEFAULT_SCRIPT_URL di index.html dengan URL Web App /exec.', 'info');
         }
-        showLoading('Memuat data tersimpan dari Google Sheets…');
+        updateConnectionStatus(false, 'Connecting...');
+        showLoading('Menghubungkan ke Google Sheets…');
         try {
-          const data = await jsonpRequest(state.settings.scriptUrl, {
-            action: 'load',
+          const ping = await jsonpRequest(scriptUrl, {
+            action: 'ping',
             spreadsheetId: SPREADSHEET_ID
-          });
-          if (!data || data.ok === false) throw new Error(data?.error || 'Respons backend tidak valid.');
-          mergeNormalizedSheets(data.sheets || {});
-          updateConnectionStatus(true);
+          }, 20000);
+          if (!ping || ping.ok === false) throw new Error(ping?.error || 'Backend tidak memberikan respons ping yang valid.');
+
+          const manifest = await jsonpRequest(scriptUrl, {
+            action: 'manifest',
+            spreadsheetId: SPREADSHEET_ID
+          }, 30000);
+          if (!manifest || manifest.ok === false) throw new Error(manifest?.error || 'Manifest data tidak dapat dimuat.');
+
+          const sheets = {};
+          const chunkSize = 2500;
+          const entries = Array.isArray(manifest.sheets) ? manifest.sheets : [];
+          let totalRows = entries.reduce((sum, item) => sum + Number(item.rowCount || 0), 0);
+          let loadedRows = 0;
+
+          for (const info of entries) {
+            const sheetName = info.name;
+            const total = Number(info.rowCount || 0);
+            sheets[sheetName] = [];
+            if (!total) continue;
+
+            for (let start = 0; start < total; start += chunkSize) {
+              showLoading(`Memuat ${sheetName}: ${formatNumber(Math.min(start + chunkSize, total))} / ${formatNumber(total)} baris…`);
+              let chunk = null;
+              let lastError = null;
+              for (let attempt = 1; attempt <= 3; attempt++) {
+                try {
+                  chunk = await jsonpRequest(scriptUrl, {
+                    action: 'loadchunk',
+                    sheet: sheetName,
+                    start: String(start),
+                    limit: String(chunkSize),
+                    spreadsheetId: SPREADSHEET_ID
+                  }, 60000);
+                  if (!chunk || chunk.ok === false) throw new Error(chunk?.error || 'Chunk tidak valid.');
+                  break;
+                } catch (error) {
+                  lastError = error;
+                  if (attempt < 3) await new Promise(resolve => setTimeout(resolve, 1200 * attempt));
+                }
+              }
+              if (!chunk) throw lastError || new Error(`Gagal memuat ${sheetName}.`);
+              sheets[sheetName].push(...(chunk.rows || []));
+              loadedRows += (chunk.rows || []).length;
+              updateConnectionStatus(false, `Loading ${formatNumber(loadedRows)} / ${formatNumber(totalRows)}`);
+            }
+          }
+
+          mergeNormalizedSheets(sheets);
+          updateConnectionStatus(true, 'Google Sheets terhubung');
           if (showMessage) showNotice(`Data tersimpan berhasil dimuat. Total turntime: ${formatNumber(state.records.length)} transaksi; defect: ${formatNumber(state.defects.length)}.`, 'success');
         } catch (error) {
           console.error(error);
