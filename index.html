@@ -904,7 +904,7 @@
         if (!window.XLSX || !window.Chart) {
           showNotice('Library Excel atau grafik gagal dimuat. Pastikan perangkat terhubung ke internet lalu refresh halaman.', 'error');
         }
-        if (state.settings.scriptUrl) reloadCloudForSelectedPeriod(false, true);
+        // Manual mode: do not fetch data on page open.
       }
 
       function bindEvents() {
@@ -919,11 +919,11 @@
         els.periodMode.addEventListener('change', async () => {
           applyPeriodFieldVisibility();
           setDefaultPeriodInputForMode();
-          await reloadCloudForSelectedPeriod(false);
+          // Manual mode: only reload when user clicks Muat Data Tersimpan.
         });
         [els.dayInput, els.weekInput, els.monthInput, els.startDateInput, els.endDateInput]
           .forEach(node => node.addEventListener('change', async () => {
-            await reloadCloudForSelectedPeriod(false);
+            // Manual mode: only reload when user clicks Muat Data Tersimpan.
           }));
         [els.movementFilter, els.conditionFilter, els.equipmentFilter, els.gradeFilter]
           .forEach(node => node.addEventListener('change', () => {
@@ -1686,7 +1686,7 @@
         els.gradeFilter.value = 'ALL';
         els.searchInput.value = '';
         applyPeriodFieldVisibility();
-        await reloadCloudForSelectedPeriod(false);
+        // Manual mode: only reload when user clicks Muat Data Tersimpan.
       }
 
       function applyFilters() {
@@ -2445,50 +2445,56 @@
 
       async function saveSheetsToCloud(sheetMap) {
         const scriptUrl = String(state.settings.scriptUrl || '').trim();
-        if (!scriptUrl) {
-          updateConnectionStatus(false, 'Belum terhubung');
-          openSettings();
-          return showNotice('Data belum tersimpan. Masukkan URL Web App Google Apps Script yang berakhiran /exec.', 'error');
-        }
         if (!/\/exec(?:\?|$)/.test(scriptUrl)) {
-          updateConnectionStatus(false, 'URL tidak valid');
-          openSettings();
-          return showNotice('URL Google Apps Script harus menggunakan URL deployment yang berakhiran /exec, bukan URL editor.', 'error');
+          showNotice('URL Web App tidak valid. Atur URL /exec pada Pengaturan.', 'error');
+          return false;
         }
-        showLoading('Memeriksa koneksi Google Sheets…');
+        const prepared = prepareSheetsForUpload(sheetMap);
+        const batchSize = 100;
+        const counts = {};
         try {
-          const ping = await jsonpRequest(scriptUrl, {
-            action: 'ping',
-            spreadsheetId: SPREADSHEET_ID
-          });
-          if (!ping || ping.ok === false) throw new Error(ping?.error || 'Backend tidak memberikan respons valid.');
-
-          showLoading('Menyimpan dan menggabungkan data ke Google Sheets…');
-          const payload = {
-            action: 'upsert',
-            spreadsheetId: SPREADSHEET_ID,
-            sheets: prepareSheetsForUpload(sheetMap)
-          };
-          await fetch(scriptUrl, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
-          });
-
-          showLoading('Memverifikasi data tersimpan…');
-          const verification = await jsonpRequest(scriptUrl, {
-            action: 'manifest',
-            spreadsheetId: SPREADSHEET_ID
-          }, 30000);
-          if (!verification || verification.ok === false) throw new Error(verification?.error || 'Data tidak dapat diverifikasi setelah dikirim.');
-          updateConnectionStatus(true, 'Google Sheets terhubung');
-          showNotice('Data berhasil dikirim dan koneksi Google Sheets sudah diverifikasi. Data lama dengan movement yang sama akan diperbarui, bukan diduplikasi.', 'success');
+          const ping = await jsonpRequest(scriptUrl, {action:'ping'}, 30000);
+          if (!ping?.ok || ping.spreadsheetId !== SPREADSHEET_ID) throw new Error('Tujuan spreadsheet backend tidak sesuai.');
+          for (const sheet of REQUIRED_SHEETS) {
+            const rows = prepared[sheet] || [];
+            if (!rows.length) continue;
+            counts[sheet] = 0;
+            for (let start = 0; start < rows.length; start += batchSize) {
+              const chunk = rows.slice(start, start + batchSize);
+              const receipt = `tt_${Date.now()}_${Math.random().toString(36).slice(2)}_${start}`;
+              const payload = {action:'upsert', uploadId:receipt, sheets:{[sheet]:chunk}};
+              let saved = false, lastError;
+              for (let attempt = 0; attempt < 3 && !saved; attempt++) {
+                try {
+                  showLoading(`Menyimpan ${sheet}: ${Math.min(start + chunk.length,rows.length)}/${rows.length} (percobaan ${attempt+1})`);
+                  await fetch(scriptUrl, {
+                    method:'POST', mode:'no-cors',
+                    headers:{'Content-Type':'text/plain;charset=utf-8'},
+                    body:JSON.stringify(payload)
+                  });
+                  // no-cors responses are opaque; only a matching server receipt is proof of saving.
+                  for (let check = 0; check < 8; check++) {
+                    await new Promise(resolve => setTimeout(resolve, 1200 + check * 650));
+                    const ack = await jsonpRequest(scriptUrl, {action:'uploadstatus',uploadId:receipt}, 30000);
+                    if (ack?.ok && ack.saved && ack.sheet === sheet && ack.received === chunk.length) {
+                      saved = true; break;
+                    }
+                    if (ack?.error) throw new Error(ack.error);
+                  }
+                  if (!saved) throw new Error(`Belum ada konfirmasi penyimpanan ${sheet} batch ${start + 1}.`);
+                } catch (error) { lastError = error; }
+              }
+              if (!saved) throw new Error(`${sheet}: ${lastError?.message || 'gagal upload'}. Batch berikutnya dihentikan.`);
+              counts[sheet] += chunk.length;
+            }
+          }
+          updateConnectionStatus(true, 'Tersimpan & terverifikasi');
+          showNotice(`Tersimpan dan dikonfirmasi server: ${Object.entries(counts).map(([k,v])=>`${k} ${v} baris`).join('; ')}.`, 'success');
+          return true;
         } catch (error) {
-          console.error(error);
-          updateConnectionStatus(false, 'Koneksi gagal');
-          showNotice(`Data belum tersimpan: ${error.message || error}`, 'error');
-          openSettings();
+          updateConnectionStatus(false, 'Upload belum lengkap');
+          showNotice(`Upload tidak lengkap: ${error.message}. Upload ulang file untuk melanjutkan; data yang sudah tersimpan akan diperbarui.`, 'error');
+          return false;
         } finally { hideLoading(); }
       }
 
